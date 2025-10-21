@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ladda upp 3MF/STL</title>
+  <link rel="icon" type="image/png" href="/Pauli.png" />
+  <style>
+    :root{--bg:#0f172a;--card:#111827;--text:#e5e7eb;--muted:#9ca3af;--accent:#60a5fa;--ok:#22c55e;--err:#ef4444}
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
+    body{margin:0;background:linear-gradient(135deg,#0f172a,#1f2937);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;min-height:100vh;}
+    .hero {
+      height: 100vh;
+      min-height: unset;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(120deg, #1e293b 60%, #60a5fa 100%);
+      position: relative;
+      text-align: center;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+      padding: 0 20px;
+    }
+    .hero-content {
+      margin-top: 0;
+    }
+    .hero h1 {
+      font-size: 2.7rem;
+      margin-bottom: 12px;
+      color: #fff;
+      letter-spacing: 1px;
+      text-shadow: 0 2px 16px #0f172a99;
+    }
+    .hero p {
+      color: #e0e7ef;
+      font-size: 1.2rem;
+      margin-bottom: 32px;
+      text-shadow: 0 1px 8px #0f172a66;
+    }
+    .admin-link {
+      position: absolute;
+      top: 24px;
+      right: 32px;
+      color: #93c5fd;
+      background: rgba(17,24,39,0.7);
+      padding: 8px 16px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 500;
+      box-shadow: 0 2px 8px #0f172a33;
+      transition: background 0.2s;
+    }
+    .admin-link:hover {
+      background: #60a5fa;
+      color: #0f172a;
+    }
+    #formSection {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: unset;
+      height: 100vh;
+      padding: 0;
+    }
+    .card{width:100%;max-width:720px;background:rgba(17,24,39,0.6);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:28px;box-shadow:0 10px 30px rgba(0,0,0,0.45)}
+    h2{margin:0 0 6px 0;font-size:28px}
+    p{margin:0 0 18px 0;color:var(--muted)}
+    label{display:block;margin:14px 0 6px}
+    input,select,textarea{width:100%;padding:12px 14px;border:1px solid rgba(255,255,255,0.12);border-radius:10px;background:rgba(255,255,255,0.06);color:var(--text);outline:none}
+    select{appearance:none;-webkit-appearance:none;-moz-appearance:none;background-color:rgba(255,255,255,0.08);color:var(--text);font-size:14px}
+    option{background:#111827;color:var(--text);font-size:14px}
+    select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(96,165,250,0.25)}
+    textarea{min-height:110px}
+    input[type=file]{padding:10px}
+    .file-drop {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      min-height: 64px;
+      background: rgba(96,165,250,0.08);
+      border: 2px dashed var(--accent);
+      border-radius: 12px;
+      color: var(--text);
+      font-size: 1rem;
+      cursor: pointer;
+      margin-bottom: 12px;
+      transition: background 0.2s, border-color 0.2s;
+      text-align: center;
+      position: relative;
+      padding: 18px 0;
+    }
+    .file-drop:hover, .file-drop.dragover {
+      background: rgba(96,165,250,0.18);
+      border-color: #60a5fa;
+    }
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .row > div{min-width:0}
+    .hint{font-size:12px;color:var(--muted)}
+    .btn{margin-top:18px;display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:#0b1020;border:none;padding:12px 16px;border-radius:10px;font-weight:600;cursor:pointer}
+    .msg{margin-top:12px;font-size:14px}
+    .ok{color:var(--ok)}
+    .err{color:var(--err)}
+    .scroll-down {
+      display: inline-block;
+      margin-top: 10px;
+      font-size: 2.5rem;
+      color: #fff;
+      background: rgba(96,165,250,0.18);
+      border-radius: 50%;
+      width: 54px;
+      height: 54px;
+      line-height: 54px;
+      text-align: center;
+      box-shadow: 0 2px 12px #0f172a44;
+      transition: background 0.2s, transform 0.2s;
+      text-decoration: none;
+      pointer-events: none;
+    }
+    .scroll-down:hover {
+      background: #60a5fa;
+      color: #0f172a;
+      transform: translateY(4px) scale(1.08);
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="hero-content">
+      <h1>Välkommen till 3D-Utskriftsportalen</h1>
+      <p>Skicka in din 3D-modell och få den utskriven av Noah eller Alex.<br>Snabbt, enkelt och smidigt.</p>
+      <span class="scroll-down" aria-hidden="true">&#8595;</span>
+    </div>
+    <a class="admin-link" href="/admin">Admin</a>
+  </header>
+
+  <section id="formSection">
+    <div class="card">
+      <h2 style="margin-top:0">Ladda upp din 3D-modell</h2>
+      <p>Fyll i formuläret och ladda upp en <strong>.3mf</strong> eller <strong>.stl</strong>-fil.</p>
+      <form id="uploadForm" enctype="multipart/form-data">
+        <label for="namn">Namn *</label>
+        <input id="namn" name="namn" type="text" required />
+
+        <label for="mejl">Mejl *</label>
+        <input id="mejl" name="mejl" type="email" required />
+
+        <label for="beskrivning">Kort beskrivning *</label>
+        <textarea id="beskrivning" name="beskrivning" required></textarea>
+
+        <div class="row">
+          <div>
+            <label for="preferens">Har du preferens på vem *</label>
+            <select id="preferens" name="preferens" required>
+              <option value="" disabled selected>Välj...</option>
+              <option value="Noah">Noah</option>
+              <option value="Alex">Alex</option>
+              <option value="Vem som">Vem som</option>
+            </select>
+          </div>
+          <div>
+            <label for="brattom">Hur bråttom *</label>
+            <select id="brattom" name="brattom" required>
+              <option value="" disabled selected>Välj...</option>
+              <option value="Inte bråttom">Inte bråttom</option>
+              <option value="Snart">Snart</option>
+              <option value="Mycket bråttom">Mycket bråttom</option>
+            </select>
+          </div>
+        </div>
+
+        <label for="modelFile">Lägg in din 3mf eller stl fil här *</label>
+        <label for="modelFile" class="file-drop">
+          <span id="fileLabelText">Välj eller släpp fil här (.3mf eller .stl)</span>
+          <input id="modelFile" name="modelFile" type="file" accept=".stl,.3mf" required style="display:none" />
+        </label>
+
+        <button class="btn" type="submit">Skicka in</button>
+        <div class="msg" id="msg"></div>
+      </form>
+    </div>
+  </section>
+
+  <script>
+    const form = document.getElementById('uploadForm');
+    const msg = document.getElementById('msg');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      msg.textContent = '';
+      const fd = new FormData(form);
+      try {
+        const res = await fetch('/api/submit', { method: 'POST', body: fd, headers: { 'Accept': 'application/json' } });
+        if (!res.ok) {
+          const err = await res.json().catch(()=>({ error: 'Något gick fel' }));
+          msg.textContent = err.error || 'Något gick fel';
+          msg.className = 'msg err';
+          return;
+        }
+        msg.textContent = 'Tack! Din modell har skickats in.';
+        msg.className = 'msg ok';
+        form.reset();
+      } catch (err) {
+        msg.textContent = 'Kunde inte skicka. Kontrollera din uppkoppling.';
+        msg.className = 'msg err';
+      }
+    });
+
+    // Custom file input logic
+    const fileInput = document.getElementById('modelFile');
+    const fileLabel = document.querySelector('.file-drop');
+    const fileLabelText = document.getElementById('fileLabelText');
+    if (fileInput && fileLabel && fileLabelText) {
+      fileInput.addEventListener('change', function() {
+        if (fileInput.files && fileInput.files.length > 0) {
+          fileLabelText.textContent = fileInput.files[0].name;
+        } else {
+          fileLabelText.textContent = 'Välj eller släpp fil här (.3mf eller .stl)';
+        }
+      });
+      fileLabel.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        fileLabel.classList.add('dragover');
+      });
+      fileLabel.addEventListener('dragleave', function(e) {
+        fileLabel.classList.remove('dragover');
+      });
+      fileLabel.addEventListener('drop', function(e) {
+        e.preventDefault();
+        fileLabel.classList.remove('dragover');
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+          fileInput.files = e.dataTransfer.files;
+          fileInput.dispatchEvent(new Event('change'));
+        }
+      });
+      fileLabel.addEventListener('click', function() {
+        fileInput.click();
+      });
+    }
+  </script>
+</body>
+</html>

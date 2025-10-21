@@ -1,0 +1,27 @@
+{
+  "name": "stl-3mf-form-site",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Simple form site to upload STL/3MF with password-protected admin and JSON-backed mock DB",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "stl",
+    "3mf",
+    "form",
+    "admin",
+    "express"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "express-basic-auth": "^1.2.1",
+    "express-session": "^1.18.2",
+    "multer": "^2.0.2",
+    "uuid": "^13.0.0"
+  }
+}
