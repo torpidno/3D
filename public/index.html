@@ -9,7 +9,14 @@
     :root{--bg:#0f172a;--card:#111827;--text:#e5e7eb;--muted:#9ca3af;--accent:#60a5fa;--ok:#22c55e;--err:#ef4444}
     *{box-sizing:border-box}
     html{scroll-behavior:smooth}
-    body{margin:0;background:linear-gradient(135deg,#0f172a,#1f2937);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;min-height:100vh;}
+    body{
+      margin:0;
+      background:#020617;
+      color:var(--text);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      min-height:100vh;
+      position:relative;
+    }
     .hero {
       height: 100vh;
       min-height: unset;
@@ -17,14 +24,26 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      background: linear-gradient(120deg, #1e293b 60%, #60a5fa 100%);
       position: relative;
       text-align: center;
       box-shadow: 0 8px 32px rgba(0,0,0,0.25);
       padding: 0 20px;
+      overflow: hidden;
+      z-index: 1;
     }
     .hero-content {
       margin-top: 0;
+      position: relative;
+      z-index: 2;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(140deg, rgba(10, 22, 43, 0.85) 20%, rgba(8, 47, 73, 0.55) 60%, rgba(12, 74, 110, 0.3) 100%);
+      mix-blend-mode: screen;
+      pointer-events: none;
+      z-index: 1;
     }
     .hero h1 {
       font-size: 2.7rem;
@@ -64,6 +83,8 @@
       min-height: unset;
       height: 100vh;
       padding: 0;
+      position: relative;
+      z-index: 1;
     }
     .card{width:100%;max-width:720px;background:rgba(17,24,39,0.6);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:28px;box-shadow:0 10px 30px rgba(0,0,0,0.45)}
     h2{margin:0 0 6px 0;font-size:28px}
@@ -125,6 +146,16 @@
       color: #0f172a;
       transform: translateY(4px) scale(1.08);
     }
+    canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      pointer-events: none;
+      filter: saturate(1.2);
+    }
   </style>
 </head>
 <body>
@@ -184,7 +215,233 @@
     </div>
   </section>
 
+  <canvas id="canvas"></canvas>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script>
+    const canvas = document.getElementById('canvas');
+    const scene = new THREE.Scene();
+    const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x000000, 0);
+
+    const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(0, 0, 10);
+
+    const ambientLight = new THREE.AmbientLight(0xadc8ff, 0.6);
+    const frontLight = new THREE.PointLight(0xffffff, 1.35);
+    frontLight.position.set(5, 4, 6);
+    const rimLight = new THREE.PointLight(0x60a5fa, 0.9);
+    rimLight.position.set(-6, -3, -2);
+    scene.add(ambientLight, frontLight, rimLight);
+
+    const heroGroup = new THREE.Group();
+    scene.add(heroGroup);
+
+  const palette = [0x60a5fa, 0x7c3aed, 0x38bdf8, 0xf97316];
+    const makeMaterial = (color) => new THREE.MeshStandardMaterial({
+      color,
+      metalness: 0.6,
+      roughness: 0.25,
+      emissive: color,
+      emissiveIntensity: 0.18
+    });
+
+    const prism = new THREE.Mesh(new THREE.IcosahedronGeometry(1.6, 0), makeMaterial(palette[0]));
+    prism.position.set(-2.8, 0.6, 0);
+    heroGroup.add(prism);
+
+    const knot = new THREE.Mesh(new THREE.TorusKnotGeometry(1.05, 0.32, 180, 24), makeMaterial(palette[1]));
+    knot.position.set(2.6, -0.4, 0.2);
+    heroGroup.add(knot);
+
+    const bubble = new THREE.Mesh(new THREE.SphereGeometry(1.2, 42, 42), makeMaterial(palette[2]));
+    bubble.position.set(0.2, 1.8, -1.2);
+    heroGroup.add(bubble);
+
+  const gem = new THREE.Mesh(new THREE.OctahedronGeometry(1.35, 0), makeMaterial(palette[3]));
+  gem.position.set(-0.6, -2.2, 0.4);
+  heroGroup.add(gem);
+
+  const heroObjects = [prism, knot, bubble, gem];
+  const heroRadii = [1.4, 1.2, 1.05, 1.25];
+    heroObjects.forEach((obj, idx) => {
+      obj.userData.velocity = new THREE.Vector3(
+        (Math.random() - 0.5) * 0.04,
+        (Math.random() - 0.5) * 0.04,
+        0
+      );
+      obj.userData.maxSpeed = 0.05 - idx * 0.006;
+    });
+
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+
+    const starsGeometry = new THREE.BufferGeometry();
+    const starCount = 160;
+    const starPositions = new Float32Array(starCount * 3);
+    for (let i = 0; i < starCount; i++) {
+      starPositions[i * 3] = (Math.random() - 0.5) * 32;
+      starPositions[i * 3 + 1] = (Math.random() - 0.5) * 32;
+      starPositions[i * 3 + 2] = -Math.random() * 20;
+    }
+    starsGeometry.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+    const starsMaterial = new THREE.PointsMaterial({
+      color: 0x60a5fa,
+      size: 0.05,
+      transparent: true,
+      opacity: 0.75,
+      sizeAttenuation: true
+    });
+    const stars = new THREE.Points(starsGeometry, starsMaterial);
+    scene.add(stars);
+
+  const mouseTarget = new THREE.Vector2(0, 0);
+  const parallax = new THREE.Vector2(0, 0);
+  const floatBounds = new THREE.Vector2();
+  const updateFloatBounds = () => {
+    const depth = camera.position.z;
+    const halfHeight = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * depth;
+    const halfWidth = halfHeight * camera.aspect;
+    floatBounds.set(halfWidth * 0.82, halfHeight * 0.78);
+  };
+  updateFloatBounds();
+
+    window.addEventListener('pointermove', (event) => {
+      const x = (event.clientX / window.innerWidth) * 2 - 1;
+      const y = -(event.clientY / window.innerHeight) * 2 + 1;
+      mouseTarget.set(x, y);
+      pointer.set(x, y);
+    });
+
+    window.addEventListener('pointerleave', () => {
+      mouseTarget.set(0, 0);
+      pointer.set(0, 0);
+    });
+
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const elapsed = clock.getElapsedTime();
+
+  raycaster.setFromCamera(pointer, camera);
+  const intersections = raycaster.intersectObjects(heroObjects, false);
+  const hoverHit = intersections.length ? intersections[0] : null;
+
+    prism.rotation.x -= 0.004 + parallax.y * 0.0012;
+    prism.rotation.y += 0.006;
+    knot.rotation.y += 0.01 + parallax.x * 0.0025;
+    knot.rotation.x -= 0.003;
+    bubble.rotation.y += 0.006;
+  gem.rotation.y -= 0.008 + parallax.x * 0.0015;
+  gem.rotation.x += 0.004;
+
+      heroObjects.forEach((obj, idx) => {
+        const vel = obj.userData.velocity;
+        const maxSpeed = obj.userData.maxSpeed;
+
+        vel.x += (Math.random() - 0.5) * 0.0012;
+        vel.y += (Math.random() - 0.5) * 0.0012;
+
+        vel.x += parallax.x * 0.0004;
+        vel.y += parallax.y * 0.0004;
+
+        if (hoverHit && hoverHit.object === obj) {
+          const repelDir = obj.position.clone().sub(hoverHit.point);
+          if (repelDir.lengthSq() < 0.0001) {
+            repelDir.set(mouseTarget.x || 0.0001, mouseTarget.y || 0.0001, 0);
+          }
+          repelDir.normalize();
+          const repelStrength = 0.015 + idx * 0.004;
+          vel.x += repelDir.x * repelStrength;
+          vel.y += repelDir.y * repelStrength;
+        }
+
+        vel.multiplyScalar(0.995);
+        const speed = Math.sqrt(vel.x * vel.x + vel.y * vel.y);
+        if (speed > maxSpeed) {
+          const scale = maxSpeed / speed;
+          vel.x *= scale;
+          vel.y *= scale;
+        }
+
+        obj.position.x += vel.x;
+        obj.position.y += vel.y;
+        obj.position.z = Math.sin(elapsed * 0.35 + idx) * 1.6;
+
+        if (obj.position.x > floatBounds.x) {
+          obj.position.x = floatBounds.x;
+          vel.x *= -0.85;
+        } else if (obj.position.x < -floatBounds.x) {
+          obj.position.x = -floatBounds.x;
+          vel.x *= -0.85;
+        }
+
+        if (obj.position.y > floatBounds.y) {
+          obj.position.y = floatBounds.y;
+          vel.y *= -0.85;
+        } else if (obj.position.y < -floatBounds.y) {
+          obj.position.y = -floatBounds.y;
+          vel.y *= -0.85;
+        }
+      });
+
+      for (let i = 0; i < heroObjects.length; i++) {
+        for (let j = i + 1; j < heroObjects.length; j++) {
+          const objA = heroObjects[i];
+          const objB = heroObjects[j];
+          const dx = objA.position.x - objB.position.x;
+          const dy = objA.position.y - objB.position.y;
+          const distSq = dx * dx + dy * dy;
+          const minDist = heroRadii[i] + heroRadii[j];
+          if (distSq < minDist * minDist) {
+            const dist = Math.sqrt(distSq) || 0.0001;
+            const nx = dx / dist;
+            const ny = dy / dist;
+            const overlap = (minDist - dist) * 0.5;
+
+            objA.position.x += nx * overlap;
+            objA.position.y += ny * overlap;
+            objB.position.x -= nx * overlap;
+            objB.position.y -= ny * overlap;
+
+            const velA = objA.userData.velocity;
+            const velB = objB.userData.velocity;
+            const va = velA.x * nx + velA.y * ny;
+            const vb = velB.x * nx + velB.y * ny;
+            const impulse = vb - va;
+
+            velA.x += impulse * nx;
+            velA.y += impulse * ny;
+            velB.x -= impulse * nx;
+            velB.y -= impulse * ny;
+          }
+        }
+      }
+
+      stars.rotation.z += 0.0005 + parallax.x * 0.0008;
+
+      parallax.x += (mouseTarget.x * 0.9 - parallax.x) * 0.04;
+      parallax.y += (mouseTarget.y * 0.6 - parallax.y) * 0.04;
+
+      camera.position.x = parallax.x * 2;
+      camera.position.y = parallax.y * 1.4;
+      camera.lookAt(0, 0, 0);
+
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      renderer.setSize(width, height);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      updateFloatBounds();
+    });
+
     const form = document.getElementById('uploadForm');
     const msg = document.getElementById('msg');
     form.addEventListener('submit', async (e) => {
@@ -239,6 +496,7 @@
         fileInput.click();
       });
     }
+
   </script>
 </body>
 </html>
