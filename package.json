@@ -21,7 +21,6 @@
     "express": "^5.1.0",
     "express-basic-auth": "^1.2.1",
     "express-session": "^1.18.2",
-    "multer": "^2.0.2",
-    "uuid": "^13.0.0"
+    "multer": "^2.0.2"
   }
 }

@@ -4,7 +4,7 @@ const fs = require('fs');
 const multer = require('multer');
 const basicAuth = require('express-basic-auth'); // kept for backward compatibility (not used after session auth switch)
 const session = require('express-session');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 require('dotenv').config();
 
 const app = express();
@@ -205,7 +205,7 @@ app.post('/api/submit', upload.single('fil'), (req, res) => {
   }
 
   const entry = {
-    id: uuidv4(),
+  id: randomUUID(),
     submittedAt: new Date().toISOString(),
     namn: trimmed.namn,
     mejl: trimmed.mejl,
