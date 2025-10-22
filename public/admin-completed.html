@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Färdiga Prints – 3D Admin</title>
+  <link rel="icon" type="image/png" href="/Pauli.png" />
+  <style>
+    :root{--bg:#020617;--card:#111827;--text:#e5e7eb;--muted:#9ca3af;--accent:#60a5fa;--border:rgba(255,255,255,0.1);--sidebar:#0f172a;--hover:rgba(255,255,255,0.06)}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+    .layout{display:flex;min-height:100vh}
+    .sidebar{width:260px;background:var(--sidebar);border-right:1px solid var(--border);padding:20px;position:fixed;height:100vh;overflow-y:auto;display:flex;flex-direction:column}
+    .sidebar h2{margin:0 0 20px 0;font-size:20px;color:var(--accent)}
+    .nav-menu{list-style:none;padding:0;margin:0}
+    .nav-menu li{margin-bottom:8px}
+    .nav-menu a{display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:10px;text-decoration:none;color:var(--text);transition:background 0.2s}
+    .nav-menu a:hover{background:var(--hover)}
+    .nav-menu a.active{background:var(--accent);color:#0b1220;font-weight:600}
+    .nav-menu .icon{font-size:18px}
+    .nav-menu a.btn-home{border:1px solid var(--border);background:transparent;justify-content:center}
+    .nav-menu a.btn-home:hover{background:var(--hover);border-color:var(--accent)}
+    .main-content{margin-left:260px;flex:1;padding:20px;max-width:1600px}
+    .header{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:center}
+    .header h1{margin:0;font-size:28px}
+    .user-info{display:flex;align-items:center;gap:12px}
+    .user-pill{padding:8px 14px;border-radius:999px;border:1px solid rgba(148,163,184,0.24);background:rgba(148,163,184,0.12);color:var(--muted);font-size:13px}
+    .btn-logout{background:#ef4444;color:#fff;padding:8px 14px;border-radius:8px;text-decoration:none;font-weight:500}
+    .btn-logout:hover{filter:brightness(1.1)}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,0.45);margin-bottom:20px}
+    .card-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+    .card-header h2{margin:0;font-size:20px}
+    .card-body{padding:0}
+    .table-wrap{overflow:auto;border-radius:14px}
+    table{width:100%;border-collapse:separate;border-spacing:0;color:var(--text)}
+    th,td{padding:12px 14px;vertical-align:top;text-align:left}
+    thead th{position:sticky;top:0;background:#0f172a;border-bottom:1px solid var(--border);font-weight:600}
+    tbody tr{border-bottom:1px solid var(--border)}
+    tbody tr:nth-child(even){background:rgba(255,255,255,0.02)}
+    tbody tr:hover{background:var(--hover)}
+    .wrap{word-break:break-word;white-space:pre-wrap}
+    .idx{color:var(--muted);font-size:13px}
+    a{color:#93c5fd;text-decoration:none}
+    a:hover{text-decoration:underline}
+    .btn-del{display:inline-block;margin:4px 4px 4px 0;padding:6px 10px;border-radius:6px;font-size:12px;border:none;cursor:pointer;font-weight:500;background:#ef4444;color:#fff}
+    .btn-del:hover{filter:brightness(1.1)}
+    .claimed{color:#60a5fa;font-size:0.9em;margin-left:4px}
+    .beskrivning-cell.long-desc{cursor:pointer}
+    .show-more{color:#93c5fd;font-size:12px;margin-left:4px}
+    .desc-modal-bg{position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.55);z-index:1000;display:flex;align-items:center;justify-content:center}
+    .desc-modal{background:#111827;color:#e5e7eb;padding:28px 32px;border-radius:14px;max-width:520px;box-shadow:0 8px 32px #000a;font-size:1.05em;position:relative;max-height:80vh;overflow-y:auto}
+    .desc-close{position:absolute;top:12px;right:14px;background:#ef4444;color:#fff;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-weight:600}
+    th.sortable{cursor:pointer;user-select:none}
+    th.sortable::after{content:'↕';font-size:12px;opacity:.6;margin-left:6px}
+    th.sortable[aria-sort="ascending"]::after{content:'▲';opacity:.95}
+    th.sortable[aria-sort="descending"]::after{content:'▼';opacity:.95}
+    @media (max-width:768px){
+      .sidebar{width:100%;height:auto;position:relative;border-right:none;border-bottom:1px solid var(--border)}
+      .main-content{margin-left:0}
+      .layout{flex-direction:column}
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h2>🖨️ 3D Admin</h2>
+      <ul class="nav-menu">
+        <li><a href="/admin"><span class="icon">📊</span> Översikt</a></li>
+        <li><a href="/admin/my-prints"><span class="icon">🎨</span> Mina Prints</a></li>
+        <li><a href="/admin/other-prints"><span class="icon">👤</span> Andras Prints</a></li>
+        <li><a href="/admin/completed" class="active"><span class="icon">✅</span> Färdiga Prints</a></li>
+      </ul>
+      <ul class="nav-menu" style="margin-top:auto">
+        <li><a href="/" class="btn-home">Till startsidan</a></li>
+      </ul>
+    </aside>
+
+    <main class="main-content">
+      <div class="header">
+        <h1>Färdiga Prints</h1>
+        <div class="user-info">
+          <span class="user-pill" id="userDisplay">Laddar...</span>
+          <a href="/logout" class="btn-logout">Logga ut</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h2>Alla Färdiga Prints</h2>
+        </div>
+        <div class="card-body table-wrap">
+          <table id="completedTable">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Klar</th>
+                <th class="sortable" data-index="2">Namn</th>
+                <th class="sortable" data-index="3">Mejl</th>
+                <th class="sortable" data-index="4">Beskrivning</th>
+                <th class="sortable" data-index="5">Preferens</th>
+                <th class="sortable" data-index="6">Hur bråttom</th>
+                <th class="sortable" data-index="7" data-type="date">Inskickad</th>
+                <th>Åtgärder</th>
+              </tr>
+            </thead>
+            <tbody id="completedBody">
+              <tr><td colspan="9" style="text-align:center;padding:20px">Laddar...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    let userRole = '';
+
+    (async function() {
+      try {
+        // Fetch user info
+        const userRes = await fetch('/api/admin/user');
+        const userData = await userRes.json();
+        userRole = userData.role;
+        document.getElementById('userDisplay').textContent = `Inloggad som ${userData.displayName || userData.username}`;
+
+        // Fetch submissions
+        const res = await fetch('/api/admin/submissions');
+        let submissions = await res.json();
+
+        // Filter: show only completed prints
+        const completed = submissions.filter(s => s.done).reverse();
+
+        renderTable('completedBody', completed);
+        initSortable('completedTable');
+
+      } catch (err) {
+        console.error('Failed to load completed prints', err);
+      }
+    })();
+
+    function renderTable(bodyId, items) {
+      const tbody = document.getElementById(bodyId);
+      if (items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px">Inga färdiga prints än.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = items.map((s, idx) => {
+        let claimed = '';
+        if ((s.preferens === 'Noah' || s.preferens === 'Alex') && s.originalPreferens === 'Vem som') {
+          claimed = ' <span class="claimed">(vem som)</span>';
+        }
+
+        const descCell = renderDescriptionCell(s.beskrivning);
+        const dateStr = formatShortDate(s.submittedAt);
+
+        const actions = [
+          `<a href="/admin/download/${s.id}">Ladda ner</a>`
+        ];
+
+        // Only admins can delete
+        if (userRole === 'admin') {
+          actions.push(`<button type="button" class="btn-del" data-id="${s.id}">Ta bort</button>`);
+        }
+
+        const canToggle = userRole === 'admin';
+
+        return `<tr data-id="${s.id}">
+          <td class="idx">${idx + 1}</td>
+          <td><input type="checkbox" class="toggle-done" data-id="${s.id}" checked ${!canToggle ? 'disabled' : ''} /></td>
+          <td>${escapeHtml(s.namn)}</td>
+          <td><a href="mailto:${escapeHtml(s.mejl)}">${escapeHtml(s.mejl)}</a></td>
+          ${descCell}
+          <td>${escapeHtml(s.preferens)}${claimed}</td>
+          <td>${escapeHtml(s.brattom)}</td>
+          <td data-sort="${new Date(s.submittedAt).getTime()}">${dateStr}</td>
+          <td>${actions.join(' ')}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    function renderDescriptionCell(text) {
+      const raw = typeof text === 'string' ? text : '';
+      const trimmed = raw.trim();
+      const previewLimit = 120;
+      const lineCount = trimmed.split(/\r?\n/).length;
+      const isLong = trimmed.length > previewLimit || lineCount > 2;
+      const fullHtml = escapeHtml(trimmed).replace(/\n/g, '<br>');
+      if (!isLong) {
+        return `<td class="wrap beskrivning-cell">${fullHtml || '-'}</td>`;
+      }
+      const preview = escapeHtml(trimmed.slice(0, previewLimit)).replace(/\n/g, '<br>');
+      return `<td class="wrap beskrivning-cell long-desc" data-full="${fullHtml}">${preview}… <span class="show-more">[visa mer]</span></td>`;
+    }
+
+    function formatShortDate(dateStr) {
+      const d = new Date(dateStr);
+      const pad = n => n.toString().padStart(2, '0');
+      return `${pad(d.getHours())}:${pad(d.getMinutes())}, ${pad(d.getDate())}/${pad(d.getMonth() + 1)}`;
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // Description modal
+    document.addEventListener('click', function(e) {
+      const closeBtn = e.target.closest('.desc-close');
+      if (closeBtn) {
+        closeBtn.closest('.desc-modal-bg')?.remove();
+        return;
+      }
+      const cell = e.target.closest('.beskrivning-cell.long-desc');
+      if (!cell) return;
+      const full = cell.getAttribute('data-full') || '';
+      const bg = document.createElement('div');
+      bg.className = 'desc-modal-bg';
+      const modal = document.createElement('div');
+      modal.className = 'desc-modal';
+      modal.innerHTML = full + '<button type="button" class="desc-close">Stäng</button>';
+      bg.appendChild(modal);
+      document.body.appendChild(bg);
+    });
+
+    // Toggle done (admin only)
+    document.addEventListener('change', async (e) => {
+      const cb = e.target;
+      if (!(cb instanceof HTMLInputElement)) return;
+      if (!cb.classList.contains('toggle-done')) return;
+      if (userRole !== 'admin') return;
+      
+      const id = cb.getAttribute('data-id');
+      const done = cb.checked;
+      try {
+        const res = await fetch('/api/admin/submissions/' + id + '/done', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ done })
+        });
+        if (!res.ok) throw new Error('Update failed');
+        
+        // If unchecked (moved back to active), remove from this page
+        if (!done) {
+          const row = cb.closest('tr');
+          const tbody = row.parentElement;
+          row.remove();
+          
+          renumberTable('completedTable');
+          
+          if (tbody && !tbody.querySelector('tr[data-id]')) {
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px">Inga färdiga prints än.</td></tr>';
+          }
+        }
+      } catch (err) {
+        cb.checked = !done;
+        alert('Kunde inte uppdatera status. Försök igen.');
+      }
+    });
+
+    // Delete (admin only)
+    document.addEventListener('click', async (e) => {
+      const target = e.target;
+      if (!(target instanceof HTMLElement)) return;
+      
+      if (target.classList.contains('btn-del')) {
+        if (userRole !== 'admin') return;
+        const id = target.getAttribute('data-id');
+        if (!id) return;
+        if (!confirm('Är du säker på att du vill ta bort denna print?')) return;
+        try {
+          const res = await fetch('/api/admin/submissions/' + id, { method: 'DELETE' });
+          if (!res.ok) throw new Error('Delete failed');
+          const row = target.closest('tr');
+          const tbody = row.parentElement;
+          row.remove();
+          renumberTable('completedTable');
+          if (tbody && !tbody.querySelector('tr[data-id]')) {
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px">Inga färdiga prints än.</td></tr>';
+          }
+        } catch (err) {
+          alert('Kunde inte ta bort. Försök igen.');
+        }
+      }
+    });
+
+    // Sortable tables
+    function initSortable(tableId) {
+      const table = document.getElementById(tableId);
+      if (!table) return;
+      const tbody = table.tBodies[0];
+      const headers = table.querySelectorAll('thead th.sortable');
+      let current = { index: null, dir: 'asc' };
+
+      function getCellValue(row, idx, type) {
+        const cell = row.children[idx];
+        if (!cell) return '';
+        const ds = cell.getAttribute('data-sort');
+        if (type === 'date') {
+          const n = ds ? parseFloat(ds) : Date.parse(cell.textContent.trim());
+          return Number.isNaN(n) ? 0 : n;
+        }
+        return (ds || cell.textContent || '').trim().toLowerCase();
+      }
+
+      function sortBy(index, type) {
+        const rows = Array.from(tbody.querySelectorAll('tr[data-id]'));
+        const dir = current.index === index && current.dir === 'asc' ? 'desc' : 'asc';
+
+        rows.sort((a, b) => {
+          const va = getCellValue(a, index, type);
+          const vb = getCellValue(b, index, type);
+          if (type === 'date') {
+            return dir === 'asc' ? va - vb : vb - va;
+          }
+          const res = String(va).localeCompare(String(vb), 'sv', { sensitivity: 'base' });
+          return dir === 'asc' ? res : -res;
+        });
+
+        rows.forEach(r => tbody.appendChild(r));
+        headers.forEach(h => h.removeAttribute('aria-sort'));
+        const active = Array.from(headers).find(h => parseInt(h.dataset.index, 10) === index);
+        if (active) active.setAttribute('aria-sort', dir === 'asc' ? 'ascending' : 'descending');
+        current = { index, dir };
+        renumberTable(tableId);
+      }
+
+      headers.forEach(h => {
+        h.addEventListener('click', () => {
+          const index = parseInt(h.dataset.index, 10);
+          const type = h.dataset.type || 'text';
+          sortBy(index, type);
+        });
+      });
+    }
+
+    function renumberTable(tableId) {
+      const table = document.getElementById(tableId);
+      if (!table) return;
+      const rows = table.tBodies[0].querySelectorAll('tr[data-id]');
+      rows.forEach((r, i) => {
+        const first = r.children[0];
+        if (first) first.textContent = i + 1;
+      });
+    }
+  </script>
+</body>
+</html>

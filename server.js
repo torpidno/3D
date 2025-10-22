@@ -90,6 +90,99 @@ const USER_CREDENTIALS = [
 
 function authenticate(username, password) {
   if (!username || !password) return null;
+
+function formatShortDate(dateStr) {
+  const d = new Date(dateStr);
+  const pad = n => n.toString().padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}, ${pad(d.getDate())}/${pad(d.getMonth() + 1)}`;
+}
+
+function renderDescriptionCell(text) {
+  const raw = typeof text === 'string' ? text : '';
+  const trimmed = raw.trim();
+  const previewLimit = 160;
+  const lineCount = trimmed.split(/\r?\n/).length;
+  const isLong = trimmed.length > previewLimit || lineCount > 2;
+  const fullHtml = escapeHtml(trimmed).replace(/\n/g, '<br>');
+  if (!isLong) {
+    return `<td class="wrap beskrivning-cell">${fullHtml || '-'}</td>`;
+  }
+  const preview = escapeHtml(trimmed.slice(0, previewLimit)).replace(/\n/g, '<br>');
+  return `<td class="wrap beskrivning-cell long-desc" data-full="${fullHtml}">${preview}… <span class="show-more">[visa mer]</span></td>`;
+}
+
+function renderRows(entries, options = {}) {
+  const {
+    isDone = false,
+    allowClaim = false,
+    user = '',
+    allowToggle = true,
+    allowDelete = true,
+    allowUnclaim = true
+  } = options;
+
+  return entries
+    .map((s, idx) => {
+      let claimed = '';
+      if ((s.preferens === 'Noah' || s.preferens === 'Alex') && s.originalPreferens === 'Vem som') {
+        claimed = ' <span class="claimed">(vem som)</span>';
+      }
+
+      const toggleHtml = allowToggle
+        ? `<input type="checkbox" class="toggle-done" data-id="${s.id}" aria-label="Markera klar" ${isDone ? 'checked' : ''} />`
+        : `<input type="checkbox" class="toggle-done" data-id="${s.id}" aria-label="Markera klar" ${isDone ? 'checked' : ''} disabled aria-disabled="true" />`;
+
+      const actions = [
+        `<a href="/admin/download/${s.id}">Ladda ner</a>`
+      ];
+
+      if (allowDelete) {
+        actions.push(`<button type="button" class="btn-del" data-id="${s.id}">Ta bort</button>`);
+      }
+
+      const isTeamMember = user === 'noah' || user === 'alex';
+      if (allowClaim && isTeamMember && s.preferens === 'Vem som') {
+        actions.push(`<button type="button" class="btn-claim" data-id="${s.id}">Ta över</button>`);
+      }
+
+      if (allowUnclaim && isTeamMember && (s.preferens === 'Noah' || s.preferens === 'Alex') && s.originalPreferens === 'Vem som') {
+        actions.push(`<button type="button" class="btn-unclaim" data-id="${s.id}">Ångra</button>`);
+      }
+
+      const descriptionCell = renderDescriptionCell(s.beskrivning);
+
+      return `
+      <tr data-id="${s.id}">
+        <td class="idx">${idx + 1}</td>
+        <td>${toggleHtml}</td>
+        <td>${escapeHtml(s.namn)}</td>
+        <td><a href="mailto:${escapeHtml(s.mejl)}">${escapeHtml(s.mejl)}</a></td>
+        ${descriptionCell}
+        <td>${escapeHtml(s.preferens)}${claimed}</td>
+        <td>${escapeHtml(s.brattom)}</td>
+        <td data-sort="${new Date(s.submittedAt).getTime()}">${formatShortDate(s.submittedAt)}</td>
+        <td>${actions.join(' ')}</td>
+      </tr>
+      `;
+    })
+    .join('');
+}
+
+function ensureOriginalPreferens(entries) {
+  return entries.map(item => {
+    if (!item.originalPreferens) {
+      item.originalPreferens = item.preferens;
+    }
+    return item;
+  });
+}
+
+function normalizePreferens(preferens) {
+  if (preferens === 'Noah' || preferens === 'Alex' || preferens === 'Vem som') {
+    return preferens;
+  }
+  return 'Vem som';
+}
   const match = USER_CREDENTIALS.find(u => u.username === username);
   if (!match) return null;
   if (match.password !== password) return null;
@@ -233,628 +326,30 @@ app.post('/api/submit', upload.single('fil'), (req, res) => {
   return res.json({ ok: true, id: entry.id });
 });
 
-// Admin HTML page
+// API endpoint to get current user info
+app.get('/api/admin/user', sessionAuth, (req, res) => {
+  res.json({
+    username: req.session.username,
+    role: req.session.user,
+    displayName: req.session.displayName
+  });
+});
+
+// Admin routes - serve the new dashboard pages
 app.get('/admin', sessionAuth, (req, res) => {
-  const db = readDb();
-  const list = db.map(s => ({ ...s, done: !!s.done }));
-  const actives = list.filter(s => !s.done).slice().reverse();
-  const finished = list.filter(s => s.done).slice().reverse();
+  res.sendFile(path.join(__dirname, 'public', 'admin-dashboard.html'));
+});
 
+app.get('/admin/my-prints', sessionAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin-my-prints.html'));
+});
 
-  // Format date as 'HH:mm, DD/MM'
-  function formatShortDate(dateStr) {
-    const d = new Date(dateStr);
-    const pad = n => n.toString().padStart(2, '0');
-    return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ', ' + pad(d.getDate()) + '/' + pad(d.getMonth() + 1);
-  }
+app.get('/admin/other-prints', sessionAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin-other-prints.html'));
+});
 
-  const renderDescriptionCell = text => {
-    const raw = typeof text === 'string' ? text : '';
-    const trimmed = raw.trim();
-    const previewLimit = 160;
-    const lineCount = trimmed.split(/\r?\n/).length;
-    const isLong = trimmed.length > previewLimit || lineCount > 2;
-    const fullHtml = escapeHtml(trimmed).replace(/\n/g, '<br>');
-    if (!isLong) {
-      return `<td class="wrap beskrivning-cell">${fullHtml || '-'}</td>`;
-    }
-    const preview = escapeHtml(trimmed.slice(0, previewLimit)).replace(/\n/g, '<br>');
-    return `<td class="wrap beskrivning-cell long-desc" data-full="${fullHtml}">${preview}… <span class="show-more">[visa mer]</span></td>`;
-  };
-
-  const renderRows = (arr, isDone, allowClaim = false, user = '') => arr
-    .map((s, idx) => {
-      // Show (vem som) if this was claimed (i.e., preferens is Noah/Alex but originally Vem som)
-      let claimed = '';
-      if ((s.preferens === 'Noah' || s.preferens === 'Alex') && s.originalPreferens === 'Vem som') {
-        claimed = ' <span class="claimed">(vem som)</span>';
-      }
-      const descriptionCell = renderDescriptionCell(s.beskrivning);
-      return `
-      <tr data-id="${s.id}">
-        <td class="idx">${idx + 1}</td>
-        <td><input type="checkbox" class="toggle-done" data-id="${s.id}" aria-label="Markera klar" ${isDone ? 'checked' : ''} /></td>
-        <td>${escapeHtml(s.namn)}</td>
-        <td><a href="mailto:${escapeHtml(s.mejl)}">${escapeHtml(s.mejl)}</a></td>
-        ${descriptionCell}
-        <td>${escapeHtml(s.preferens)}${claimed}</td>
-        <td>${escapeHtml(s.brattom)}</td>
-        <td data-sort="${new Date(s.submittedAt).getTime()}">${formatShortDate(s.submittedAt)}</td>
-        <td>
-          <a href="/admin/download/${s.id}">Ladda ner</a>
-          <button type="button" class="btn-del" data-id="${s.id}">Ta bort</button>
-          ${allowClaim && (user === 'noah' || user === 'alex') && s.preferens === 'Vem som' ? `<button type="button" class="btn-claim" data-id="${s.id}">Ta över</button>` : ''}
-          ${(user === 'noah' || user === 'alex') && (s.preferens === 'Noah' || s.preferens === 'Alex') && s.originalPreferens === 'Vem som' ? `<button type="button" class="btn-unclaim" data-id="${s.id}">Ångra</button>` : ''}
-        </td>
-      </tr>
-      `;
-    })
-    .join('');
-
-  // Active groups
-  const user = req.session.user;
-  // Add originalPreferens to each item for claim tracking
-  function withOriginalPreferens(arr) {
-    return arr.map(s => {
-      if (!s.originalPreferens) {
-        // If not present, set it to the initial preferens
-        s.originalPreferens = s.preferens;
-      }
-      return s;
-    });
-  }
-  withOriginalPreferens(list);
-  const activeRowsAll = renderRows(actives.filter(s => s.preferens === 'Vem som'), false, true, user);
-  const activeRowsNoah = renderRows(actives.filter(s => s.preferens === 'Noah'), false);
-  const activeRowsAlex = renderRows(actives.filter(s => s.preferens === 'Alex'), false);
-  const activeRowsOther = renderRows(actives.filter(s => s.preferens !== 'Noah' && s.preferens !== 'Alex'), false);
-  // Done groups
-  const doneRowsAll = renderRows(finished.filter(s => s.preferens === 'Vem som'), true, false, user);
-  const doneRowsNoah = renderRows(finished.filter(s => s.preferens === 'Noah'), true);
-  const doneRowsAlex = renderRows(finished.filter(s => s.preferens === 'Alex'), true);
-  const doneRowsOther = renderRows(finished.filter(s => s.preferens !== 'Noah' && s.preferens !== 'Alex'), true);
-
-  const activeCount = actives.length;
-  const doneCount = finished.length;
-  const preferensLabels = ['Noah', 'Alex', 'Vem som'];
-  const preferensCounts = preferensLabels.map(() => 0);
-  list.forEach(item => {
-    let pref = item.preferens || 'Vem som';
-    if (!preferensLabels.includes(pref)) pref = 'Vem som';
-    const idx = preferensLabels.indexOf(pref);
-    if (idx >= 0) preferensCounts[idx] += 1;
-  });
-
-  const normalizePreferens = pref => {
-    if (pref === 'Noah' || pref === 'Alex' || pref === 'Vem som') return pref;
-    return 'Vem som';
-  };
-
-  const urgencyLabels = ['Inte bråttom', 'Snart', 'Mycket bråttom'];
-  const urgencyCounts = urgencyLabels.map(() => 0);
-  const allowedUrgencyPrefs = (() => {
-    if (user === 'noah') return new Set(['Noah', 'Vem som']);
-    if (user === 'alex') return new Set(['Alex', 'Vem som']);
-    return null; // admin sees all
-  })();
-  const urgencySource = list.filter(item => {
-    const pref = normalizePreferens(item.preferens || 'Vem som');
-    if (!allowedUrgencyPrefs) return true;
-    return allowedUrgencyPrefs.has(pref);
-  });
-  urgencySource.forEach(item => {
-    const idx = urgencyLabels.indexOf(item.brattom || '');
-    if (idx >= 0) urgencyCounts[idx] += 1;
-  });
-  const urgencyTotal = urgencySource.length;
-
-  const statusLabels = ['Aktiva', 'Klara'];
-  const statusCounts = [activeCount, doneCount];
-
-  const totalSubmissions = list.length;
-  const safePercent = (value, total) => {
-    if (!total) return 0;
-    return Math.round((value / total) * 100);
-  };
-
-  const statusColors = ['#38bdf8', '#22c55e'];
-  const statusBarsHtml = statusLabels.map((label, idx) => {
-    const value = statusCounts[idx];
-    const percent = safePercent(value, totalSubmissions);
-    const width = value > 0 ? Math.max(percent, 12) : 0;
-    return `<div class="bar-row" role="listitem"><span class="bar-label">${label}</span><div class="bar-track"><div class="bar-fill" data-target="${width}" style="width:0;background:${statusColors[idx] || '#475569'}"></div></div><span class="bar-value">${value}</span></div>`;
-  }).join('');
-
-  const preferensColors = ['#60a5fa', '#7c3aed', '#38bdf8'];
-  const preferensBarsHtml = preferensLabels.map((label, idx) => {
-    const value = preferensCounts[idx];
-    const percent = safePercent(value, totalSubmissions);
-    const width = value > 0 ? Math.max(percent, 10) : 0;
-    return `<div class="bar-row" role="listitem"><span class="bar-label">${label}</span><div class="bar-track"><div class="bar-fill" data-target="${width}" style="width:0;background:${preferensColors[idx] || '#475569'}"></div></div><span class="bar-value">${value}</span></div>`;
-  }).join('');
-
-  const urgencyColors = ['#16a34a', '#facc15', '#f97316'];
-  const urgencyBarsHtml = urgencyLabels.map((label, idx) => {
-  const value = urgencyCounts[idx];
-  const percent = safePercent(value, urgencyTotal);
-    const width = value > 0 ? Math.max(percent, 12) : 0;
-    return `<div class="bar-row" role="listitem"><span class="bar-label">${label}</span><div class="bar-track"><div class="bar-fill" data-target="${width}" style="width:0;background:${urgencyColors[idx] || '#475569'}"></div></div><span class="bar-value">${value}</span></div>`;
-  }).join('');
-
-  const html = `<!doctype html>
-<html lang="sv">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Admin – Inskickade modeller</title>
-  <style>
-    :root{--bg:#0f172a;--text:#e5e7eb;--muted:#9ca3af;--brand:#0b1220;--card:#111827;--border:rgba(255,255,255,0.1);--accent:#60a5fa;--hover:rgba(255,255,255,0.06)}
-    *{box-sizing:border-box}
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;line-height:1.45;margin:0;background:var(--bg);color:var(--text)}
-    header{background:var(--brand);color:#fff;padding:16px 20px}
-    main{padding:20px}
-    .container{max-width:1100px;margin:0 auto}
-    .card{background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,0.45)}
-    .card-header{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
-    .card-body{padding:0}
-    table{width:100%;border-collapse:separate;border-spacing:0;color:var(--text)}
-    th,td{padding:10px 12px;vertical-align:top}
-    thead th{position:sticky;top:0;background:#0f172a;border-bottom:1px solid var(--border);text-align:left;color:var(--text)}
-    tbody tr{border-bottom:1px solid var(--border)}
-    tbody tr:nth-child(even){background:rgba(255,255,255,0.02)}
-    tbody tr:hover{background:var(--hover)}
-    a{color:#93c5fd}
-    .small{color:var(--muted);font-size:12px}
-    .wrap{word-break:break-word;white-space:pre-wrap}
-    .topbar{display:flex;justify-content:space-between;align-items:center;gap:12px}
-    .left{display:flex;align-items:center;gap:12px}
-    a.home{color:#93c5fd;text-decoration:none;border:1px solid #93c5fd;border-radius:8px;padding:6px 10px;background:transparent}
-    a.home:hover{background:#93c5fd;color:#0b1020}
-    th.sortable{cursor:pointer;user-select:none}
-    th.sortable::after{content:'↕';font-size:12px;opacity:.6;margin-left:6px}
-    th.sortable[aria-sort="ascending"]::after{content:'▲';opacity:.95}
-    th.sortable[aria-sort="descending"]::after{content:'▼';opacity:.95}
-    .table-wrap{overflow:auto;border-radius:14px}
-    .btn-del{display:inline-block;margin-top:6px;background:#ef4444;color:#fff;padding:4px 8px;border-radius:6px;text-decoration:none;font-size:12px}
-    .btn-del:hover{filter:brightness(1.05)}
-    .claimed{color:#60a5fa;font-size:0.95em;margin-left:2px}
-    .charts-section{margin-bottom:26px}
-    .charts-header{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:16px;flex-wrap:wrap}
-    .charts-header h2{margin:0;font-size:22px}
-    .chart-grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
-    .chart-card{background:rgba(17,24,39,0.75);border:1px solid rgba(148,163,184,0.12);border-radius:16px;padding:16px;backdrop-filter:blur(12px);box-shadow:0 12px 32px rgba(0,0,0,0.4);position:relative;overflow:hidden}
-    .chart-card h3{margin:0 0 12px 0;font-size:16px;color:var(--text)}
-    .bar-chart{display:flex;flex-direction:column;gap:10px;margin-top:10px}
-    .bar-row{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center}
-    .bar-label{font-size:13px;color:var(--muted)}
-    .bar-track{background:rgba(148,163,184,0.12);border-radius:999px;height:12px;position:relative;overflow:hidden}
-    .bar-fill{height:100%;border-radius:999px;width:0;transition:width .55s cubic-bezier(0.16,1,0.3,1)}
-    .bar-value{font-weight:600;color:#f8fafc;font-size:13px}
-    .stat-pills{display:flex;gap:12px;flex-wrap:wrap;margin-top:6px}
-    .stat-pill{background:rgba(96,165,250,0.12);border:1px solid rgba(148,163,184,0.18);border-radius:999px;padding:10px 16px;display:flex;flex-direction:column;min-width:130px}
-    .stat-pill strong{font-size:20px;color:#f8fafc;margin-bottom:2px}
-    .stat-pill span{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:0.06em}
-    .user-pill{padding:6px 10px;border-radius:999px;border:1px solid rgba(148,163,184,0.24);background:rgba(148,163,184,0.12);color:var(--muted);font-size:13px}
-    .show-more{color:#93c5fd;font-size:12px;margin-left:4px}
-    .desc-modal-bg{position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.45);z-index:1000;display:flex;align-items:center;justify-content:center}
-    .desc-modal{background:#111827;color:#e5e7eb;padding:28px 32px;border-radius:14px;max-width:480px;box-shadow:0 8px 32px #000a;font-size:1.05em;position:relative}
-    .desc-close{position:absolute;top:10px;right:14px;background:#ef4444;color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer}
-    @media (max-width:768px){header{padding:16px}main{padding:16px}}
-  </style>
-</head>
-<body data-user="${escapeHtml(req.session.user || '')}">
-<header>
-  <div class="topbar">
-    <div class="left">
-      <a class="home" href="/">← Till startsidan</a>
-      <h1>Admin – Inskickade modeller</h1>
-    </div>
-    <div class="actions" style="display:flex;align-items:center;gap:10px">
-      <span class="user-pill" aria-live="polite">Inloggad som ${escapeHtml(req.session.displayName || req.session.user || '')}</span>
-      <a class="btn-logout" href="/logout" style="text-decoration:none;background:#ef4444;color:#fff;padding:6px 10px;border-radius:8px">Logga ut</a>
-    </div>
-  </div>
-</header>
-<main>
-  <div class="container">
-    <section class="charts-section">
-      <div class="charts-header">
-        <div>
-          <h2>Översikt</h2>
-          <p class="small" style="margin-top:4px">Totalt ${totalSubmissions} inkomna modeller senaste tiden.</p>
-          <div class="stat-pills">
-            <div class="stat-pill" aria-label="Aktiva ärenden">
-              <strong>${activeCount}</strong>
-              <span>Aktiva ärenden</span>
-            </div>
-            <div class="stat-pill" aria-label="Avslutade ärenden">
-              <strong>${doneCount}</strong>
-              <span>Avslutade</span>
-            </div>
-            <div class="stat-pill" aria-label="Totala ärenden">
-              <strong>${totalSubmissions}</strong>
-              <span>Totalt registrerade</span>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="chart-grid">
-        <div class="chart-card">
-          <h3>Status</h3>
-          <div class="bar-chart" role="list" aria-live="polite">
-            ${statusBarsHtml}
-          </div>
-        </div>
-        <div class="chart-card">
-          <h3>Preferens</h3>
-          <div class="bar-chart" role="list" aria-live="polite">
-            ${preferensBarsHtml}
-          </div>
-        </div>
-        <div class="chart-card">
-          <h3>Hur bråttom</h3>
-          <div class="bar-chart" role="list" aria-live="polite">
-            ${urgencyBarsHtml}
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <div class="card" style="margin-bottom:16px">
-      <div class="card-header">
-        <div>
-          <strong>Aktiva</strong> – Pågående 3D‑utskrifter
-        </div>
-      </div>
-      <div id="activeBody" class="card-body table-wrap">
-        <section id="activeAllSec">
-          <h3 style="margin:12px 16px">Alla</h3>
-          <table id="activeAllTable" style="margin-bottom:12px">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Klar</th>
-                <th class="sortable" data-index="2">Namn</th>
-                <th class="sortable" data-index="3">Mejl</th>
-                <th class="sortable" data-index="4">Kort beskrivning</th>
-                <th class="sortable" data-index="5">Preferens</th>
-                <th class="sortable" data-index="6">Hur bråttom</th>
-                <th class="sortable" data-index="7" data-type="date">Inskickad</th>
-                <th class="sortable" data-index="8">Fil</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${activeRowsAll || '<tr><td colspan="9">Inga aktiva ärenden.</td></tr>'}
-            </tbody>
-          </table>
-        </section>
-
-        <section id="activeNoahSec">
-          <details id="activeNoahDetails" style="margin:12px 16px">
-            <summary style="cursor:pointer;user-select:none;color:#93c5fd">Noah</summary>
-            <div style="margin-top:8px">
-              <table id="activeNoahTable" style="margin-bottom:12px">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Klar</th>
-                    <th class="sortable" data-index="2">Namn</th>
-                    <th class="sortable" data-index="3">Mejl</th>
-                    <th class="sortable" data-index="4">Kort beskrivning</th>
-                    <th class="sortable" data-index="5">Preferens</th>
-                    <th class="sortable" data-index="6">Hur bråttom</th>
-                    <th class="sortable" data-index="7" data-type="date">Inskickad</th>
-                    <th class="sortable" data-index="8">Fil</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${activeRowsNoah || '<tr><td colspan="9">Inga aktiva ärenden.</td></tr>'}
-                </tbody>
-              </table>
-            </div>
-          </details>
-        </section>
-
-        <section id="activeAlexSec">
-          <details id="activeAlexDetails" style="margin:12px 16px">
-            <summary style="cursor:pointer;user-select:none;color:#93c5fd">Alex</summary>
-            <div style="margin-top:8px">
-              <table id="activeAlexTable">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Klar</th>
-                    <th class="sortable" data-index="2">Namn</th>
-                    <th class="sortable" data-index="3">Mejl</th>
-                    <th class="sortable" data-index="4">Kort beskrivning</th>
-                    <th class="sortable" data-index="5">Preferens</th>
-                    <th class="sortable" data-index="6">Hur bråttom</th>
-                    <th class="sortable" data-index="7" data-type="date">Inskickad</th>
-                    <th class="sortable" data-index="8">Fil</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${activeRowsAlex || '<tr><td colspan="9">Inga aktiva ärenden.</td></tr>'}
-                </tbody>
-              </table>
-            </div>
-          </details>
-        </section>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-header">
-        <div>
-          <strong>Färdiga</strong> – Slutförda 3D‑utskrifter
-        </div>
-      </div>
-      <div id="doneBody" class="card-body table-wrap">
-        <section id="doneAllSec">
-          <h3 style="margin:12px 16px">Alla färdiga</h3>
-          <table id="doneAllTable" style="margin-bottom:12px">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Klar</th>
-                <th class="sortable" data-index="2">Namn</th>
-                <th class="sortable" data-index="3">Mejl</th>
-                <th class="sortable" data-index="4">Kort beskrivning</th>
-                <th class="sortable" data-index="5">Preferens</th>
-                <th class="sortable" data-index="6">Hur bråttom</th>
-                <th class="sortable" data-index="7" data-type="date">Inskickad</th>
-                <th class="sortable" data-index="8">Fil</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${doneRowsAll || '<tr><td colspan="9">Inga färdiga än.</td></tr>'}
-            </tbody>
-          </table>
-        </section>
-      </div>
-    </div>
-  </div>
-</main>
-
-<script>
-  document.addEventListener('click', function(e) {
-    const closeBtn = e.target.closest('.desc-close');
-    if (closeBtn) {
-      closeBtn.closest('.desc-modal-bg')?.remove();
-      return;
-    }
-    const cell = e.target.closest('.beskrivning-cell.long-desc');
-    if (!cell) return;
-    const full = cell.getAttribute('data-full') || '';
-    const bg = document.createElement('div');
-    bg.className = 'desc-modal-bg';
-    const modal = document.createElement('div');
-    modal.className = 'desc-modal';
-    modal.innerHTML = full + '<button type="button" class="desc-close">Stäng</button>';
-    bg.appendChild(modal);
-    document.body.appendChild(bg);
-  });
-</script>
-
-<script>
-  (function(){
-    function animateCharts(){
-      const prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const fills = document.querySelectorAll('.bar-fill');
-      const applyTargets = () => {
-        fills.forEach(el => {
-          const target = el.getAttribute('data-target');
-          if (!target) return;
-          el.style.width = target + '%';
-        });
-      };
-      if (prefersReduced) { applyTargets(); return; }
-      requestAnimationFrame(() => requestAnimationFrame(applyTargets));
-    }
-    if (document.readyState !== 'loading') animateCharts();
-    else document.addEventListener('DOMContentLoaded', animateCharts);
-  })();
-</script>
-
-<script>
-  (function(){
-    function initSortable(table){
-      if (!table) return;
-      const tbody = table.tBodies[0];
-      const headers = table.querySelectorAll('thead th.sortable');
-      let current = { index: null, dir: 'asc' };
-
-      function getCellValue(row, idx, type) {
-        const cell = row.children[idx];
-        if (!cell) return '';
-        const ds = cell.getAttribute('data-sort');
-        if (type === 'date') {
-          const n = ds ? parseFloat(ds) : Date.parse(cell.textContent.trim());
-          return Number.isNaN(n) ? 0 : n;
-        }
-        return (ds || cell.textContent || '').trim().toLowerCase();
-      }
-
-      function renumber(){
-        const rows = Array.from(tbody.querySelectorAll('tr'));
-        rows.forEach((r, i) => {
-          const first = r.children[0];
-          if (first) first.textContent = i + 1;
-        });
-      }
-
-      function sortBy(index, type) {
-        const rows = Array.from(tbody.querySelectorAll('tr'));
-        const dir = current.index === index && current.dir === 'asc' ? 'desc' : 'asc';
-
-        rows.sort((a, b) => {
-          const va = getCellValue(a, index, type);
-          const vb = getCellValue(b, index, type);
-          if (type === 'date') {
-            return dir === 'asc' ? va - vb : vb - va;
-          }
-          const res = String(va).localeCompare(String(vb), 'sv', { sensitivity: 'base' });
-          return dir === 'asc' ? res : -res;
-        });
-
-        rows.forEach(r => tbody.appendChild(r));
-        headers.forEach(h => h.removeAttribute('aria-sort'));
-        const active = Array.from(headers).find(h => parseInt(h.dataset.index, 10) === index);
-        if (active) active.setAttribute('aria-sort', dir === 'asc' ? 'ascending' : 'descending');
-        current = { index, dir };
-        renumber();
-      }
-
-      headers.forEach(h => {
-        h.addEventListener('click', () => {
-          const index = parseInt(h.dataset.index, 10);
-          const type = h.dataset.type || 'text';
-          sortBy(index, type);
-        });
-      });
-
-      return { renumber };
-    }
-
-    const tables = {
-      activeAll: document.getElementById('activeAllTable'),
-      activeNoah: document.getElementById('activeNoahTable'),
-      activeAlex: document.getElementById('activeAlexTable'),
-      doneAll: document.getElementById('doneAllTable')
-    };
-    const sorters = Object.fromEntries(Object.entries(tables).map(([k, el]) => [k, initSortable(el)]));
-
-    const userRole = document.body.getAttribute('data-user');
-    function reorderSections(group){
-      const container = document.getElementById(group + 'Body');
-      if (!container) return;
-      const all = document.getElementById(group + 'AllSec');
-      const noah = document.getElementById(group + 'NoahSec');
-      const alex = document.getElementById(group + 'AlexSec');
-      const frag = document.createDocumentFragment();
-      if (group === 'done') {
-        if (all) frag.appendChild(all);
-        if (noah) frag.appendChild(noah);
-        if (alex) frag.appendChild(alex);
-      } else {
-        if (userRole === 'noah') {
-          if (noah) frag.appendChild(noah);
-          if (all) frag.appendChild(all);
-          if (alex) frag.appendChild(alex);
-        } else if (userRole === 'alex') {
-          if (alex) frag.appendChild(alex);
-          if (all) frag.appendChild(all);
-          if (noah) frag.appendChild(noah);
-        } else {
-          if (all) frag.appendChild(all);
-          if (noah) frag.appendChild(noah);
-          if (alex) frag.appendChild(alex);
-        }
-      }
-      container.innerHTML = '';
-      container.appendChild(frag);
-    }
-    reorderSections('active');
-    reorderSections('done');
-
-    document.addEventListener('change', async (e) => {
-      const cb = e.target;
-      if (!(cb instanceof HTMLInputElement)) return;
-      if (!cb.classList.contains('toggle-done')) return;
-      const id = cb.getAttribute('data-id');
-      const done = cb.checked;
-      try {
-        const res = await fetch('/api/admin/submissions/' + id + '/done', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ done })
-        });
-        if (!res.ok) throw new Error('Update failed');
-        const row = cb.closest('tr');
-        if (!row) return;
-        const srcTbody = row.parentElement;
-        const pref = (row.querySelector('td:nth-child(6)')?.textContent || '').trim();
-        const dstTbody = (function(){
-          if (done) return tables.doneAll?.tBodies?.[0];
-          if (pref === 'Noah') return tables.activeNoah?.tBodies?.[0];
-          if (pref === 'Alex') return tables.activeAlex?.tBodies?.[0];
-          return tables.activeAll?.tBodies?.[0];
-        })();
-        if (dstTbody && dstTbody.querySelector('td[colspan]')) dstTbody.innerHTML = '';
-        if (dstTbody) dstTbody.appendChild(row);
-        Object.values(sorters).forEach(s => s && s.renumber && s.renumber());
-        if (srcTbody && !srcTbody.querySelector('tr[data-id]')) {
-          srcTbody.innerHTML = '';
-          const tr = document.createElement('tr');
-          const td = document.createElement('td');
-          td.colSpan = 9;
-          td.textContent = done ? 'Inga aktiva ärenden.' : 'Inga färdiga än.';
-          tr.appendChild(td);
-          srcTbody.appendChild(tr);
-        }
-      } catch (err) {
-        cb.checked = !done;
-        alert('Kunde inte uppdatera status. Försök igen.');
-      }
-    });
-
-    document.addEventListener('click', async (e) => {
-      const target = e.target;
-      if (!(target instanceof HTMLElement)) return;
-      if (target.classList.contains('btn-del')) {
-        const id = target.getAttribute('data-id');
-        if (!id) return;
-        if (!confirm('Är du säker på att du vill ta bort denna rad och dess fil?')) return;
-        try {
-          const res = await fetch('/api/admin/submissions/' + id, { method: 'DELETE' });
-          if (!res.ok) throw new Error('Delete failed');
-          const row = target.closest('tr');
-          if (!row) return;
-          const tbody = row.parentElement;
-          row.remove();
-          Object.values(sorters).forEach(s => s && s.renumber && s.renumber());
-          if (tbody && !tbody.querySelector('tr[data-id]')) {
-            tbody.innerHTML = '';
-            const tr = document.createElement('tr');
-            const td = document.createElement('td');
-            td.colSpan = 9;
-            td.textContent = (tbody.parentElement?.parentElement?.id === 'doneTable') ? 'Inga färdiga än.' : 'Inga aktiva ärenden.';
-            tr.appendChild(td);
-            tbody.appendChild(tr);
-          }
-        } catch (err) {
-          alert('Kunde inte ta bort posten. Försök igen.');
-        }
-      } else if (target.classList.contains('btn-claim')) {
-        const id = target.getAttribute('data-id');
-        if (!id) return;
-        if (!confirm('Vill du ta över denna 3D-print?')) return;
-        try {
-          const res = await fetch('/api/admin/submissions/' + id + '/claim', { method: 'PATCH' });
-          if (!res.ok) throw new Error('Claim failed');
-          location.reload();
-        } catch (err) {
-          alert('Kunde inte ta över posten. Försök igen.');
-        }
-      } else if (target.classList.contains('btn-unclaim')) {
-        const id = target.getAttribute('data-id');
-        if (!id) return;
-        if (!confirm('Vill du ångra och flytta tillbaka till Vem som?')) return;
-        try {
-          const res = await fetch('/api/admin/submissions/' + id + '/unclaim', { method: 'PATCH' });
-          if (!res.ok) throw new Error('Unclaim failed');
-          location.reload();
-        } catch (err) {
-          alert('Kunde inte ångra posten. Försök igen.');
-        }
-      }
-    });
-  })();
-</script>
-</body>
-</html>`;
-
-  res.send(html);
+app.get('/admin/completed', sessionAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin-completed.html'));
 });
 
 app.patch('/api/admin/submissions/:id/claim', sessionAuth, (req, res) => {
