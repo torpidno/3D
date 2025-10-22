@@ -19,11 +19,22 @@ const SESSION_SECRET = process.env.SESSION_SECRET || 'change_me_session_secret';
 const DATA_DIR = path.join(__dirname, 'data');
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 const DB_FILE = path.join(DATA_DIR, 'submissions.json');
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
 
 // Ensure folders and DB file exist
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 if (!fs.existsSync(DB_FILE)) fs.writeFileSync(DB_FILE, '[]', 'utf8');
+
+// Initialize users file with default credentials if it doesn't exist
+if (!fs.existsSync(USERS_FILE)) {
+  const defaultUsers = [
+    { username: ADMIN_USER, password: ADMIN_PASSWORD, role: 'admin', displayName: 'Admin' },
+    { username: NOAH_USER, password: NOAH_PASSWORD, role: 'noah', displayName: 'Noah' },
+    { username: ALEX_USER, password: ALEX_PASSWORD, role: 'alex', displayName: 'Alex' }
+  ];
+  fs.writeFileSync(USERS_FILE, JSON.stringify(defaultUsers, null, 2), 'utf8');
+}
 
 // Helpers to read/write the mock DB
 function readDb() {
@@ -42,6 +53,26 @@ function writeDb(entries) {
     fs.writeFileSync(DB_FILE, JSON.stringify(entries, null, 2), 'utf8');
   } catch (err) {
     console.error('Failed to write DB file', err);
+  }
+}
+
+// Helpers to read/write users
+function readUsers() {
+  try {
+    const raw = fs.readFileSync(USERS_FILE, 'utf8');
+    const data = JSON.parse(raw);
+    return Array.isArray(data) ? data : [];
+  } catch (err) {
+    console.error('Failed to read users file', err);
+    return [];
+  }
+}
+
+function writeUsers(users) {
+  try {
+    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), 'utf8');
+  } catch (err) {
+    console.error('Failed to write users file', err);
   }
 }
 
@@ -82,14 +113,14 @@ app.use(session({
 }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-const USER_CREDENTIALS = [
-  { username: ADMIN_USER, password: ADMIN_PASSWORD, role: 'admin', displayName: 'Admin' },
-  { username: NOAH_USER, password: NOAH_PASSWORD, role: 'noah', displayName: 'Noah' },
-  { username: ALEX_USER, password: ALEX_PASSWORD, role: 'alex', displayName: 'Alex' }
-];
-
 function authenticate(username, password) {
   if (!username || !password) return null;
+  const users = readUsers();
+  const match = users.find(u => u.username === username);
+  if (!match) return null;
+  if (match.password !== password) return null;
+  return match;
+}
 
 function formatShortDate(dateStr) {
   const d = new Date(dateStr);
@@ -182,11 +213,6 @@ function normalizePreferens(preferens) {
     return preferens;
   }
   return 'Vem som';
-}
-  const match = USER_CREDENTIALS.find(u => u.username === username);
-  if (!match) return null;
-  if (match.password !== password) return null;
-  return match;
 }
 
 function wantsJson(req) {
@@ -332,6 +358,59 @@ app.get('/api/admin/user', sessionAuth, (req, res) => {
     username: req.session.username,
     role: req.session.user,
     displayName: req.session.displayName
+  });
+});
+
+// API endpoint to update user profile
+app.put('/api/admin/profile', sessionAuth, (req, res) => {
+  const { currentPassword, newUsername, newPassword } = req.body;
+  const currentUsername = req.session.username;
+
+  if (!currentPassword) {
+    return res.status(400).json({ ok: false, message: 'Nuvarande lösenord krävs' });
+  }
+
+  // Read users and find current user
+  const users = readUsers();
+  const userIndex = users.findIndex(u => u.username === currentUsername);
+  
+  if (userIndex === -1) {
+    return res.status(404).json({ ok: false, message: 'Användare hittades inte' });
+  }
+
+  const user = users[userIndex];
+
+  // Verify current password
+  if (user.password !== currentPassword) {
+    return res.status(401).json({ ok: false, message: 'Felaktigt nuvarande lösenord' });
+  }
+
+  // Check if new username already exists (if changing username)
+  if (newUsername && newUsername !== currentUsername) {
+    const usernameExists = users.some(u => u.username === newUsername);
+    if (usernameExists) {
+      return res.status(400).json({ ok: false, message: 'Användarnamnet används redan' });
+    }
+    user.username = newUsername;
+  }
+
+  // Update password if provided
+  if (newPassword) {
+    user.password = newPassword;
+  }
+
+  // Save updated users
+  users[userIndex] = user;
+  writeUsers(users);
+
+  // Update session with new credentials
+  req.session.username = user.username;
+  req.session.save((err) => {
+    if (err) {
+      console.error('Session save error:', err);
+      return res.status(500).json({ ok: false, message: 'Kunde inte uppdatera session' });
+    }
+    res.json({ ok: true, message: 'Profil uppdaterad' });
   });
 });
 

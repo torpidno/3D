@@ -24,7 +24,8 @@
     .header{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:center}
     .header h1{margin:0;font-size:28px}
     .user-info{display:flex;align-items:center;gap:12px}
-    .user-pill{padding:8px 14px;border-radius:999px;border:1px solid rgba(148,163,184,0.24);background:rgba(148,163,184,0.12);color:var(--muted);font-size:13px}
+    .user-pill{padding:8px 14px;border-radius:999px;border:1px solid rgba(148,163,184,0.24);background:rgba(148,163,184,0.12);color:var(--muted);font-size:13px;cursor:pointer;transition:all 0.2s}
+    .user-pill:hover{background:rgba(148,163,184,0.2);border-color:rgba(148,163,184,0.4)}
     .btn-logout{background:#ef4444;color:#fff;padding:8px 14px;border-radius:8px;text-decoration:none;font-weight:500}
     .btn-logout:hover{filter:brightness(1.1)}
     .card{background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,0.45);margin-bottom:20px}
@@ -59,6 +60,24 @@
     th.sortable::after{content:'↕';font-size:12px;opacity:.6;margin-left:6px}
     th.sortable[aria-sort="ascending"]::after{content:'▲';opacity:.95}
     th.sortable[aria-sort="descending"]::after{content:'▼';opacity:.95}
+    .modal{display:none;position:fixed;z-index:1000;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,0.7);align-items:center;justify-content:center}
+    .modal.show{display:flex}
+    .modal-content{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:30px;max-width:500px;width:90%;box-shadow:0 12px 40px rgba(0,0,0,0.6)}
+    .modal-header{margin-bottom:24px}
+    .modal-header h2{margin:0;font-size:24px}
+    .modal-close{float:right;font-size:28px;font-weight:bold;color:var(--muted);cursor:pointer;line-height:20px}
+    .modal-close:hover{color:var(--text)}
+    .form-group{margin-bottom:20px}
+    .form-group label{display:block;margin-bottom:8px;color:var(--muted);font-size:14px;font-weight:500}
+    .form-group input{width:100%;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:14px}
+    .form-group input:focus{outline:none;border-color:var(--accent)}
+    .form-group input:disabled{opacity:0.5;cursor:not-allowed}
+    .btn-primary{background:var(--accent);color:#0b1220;padding:12px 24px;border:none;border-radius:8px;font-weight:600;cursor:pointer;width:100%;margin-top:8px}
+    .btn-primary:hover{filter:brightness(1.1)}
+    .btn-primary:disabled{opacity:0.5;cursor:not-allowed}
+    .alert{padding:12px;border-radius:8px;margin-bottom:16px;font-size:14px}
+    .alert-success{background:rgba(34,197,94,0.2);border:1px solid rgba(34,197,94,0.4);color:#86efac}
+    .alert-error{background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.4);color:#fca5a5}
     @media (max-width:768px){
       .sidebar{width:100%;height:auto;position:relative;border-right:none;border-bottom:1px solid var(--border)}
       .main-content{margin-left:0}
@@ -69,12 +88,12 @@
 <body>
   <div class="layout">
     <aside class="sidebar">
-      <h2>🖨️ 3D Admin</h2>
+      <h2>3D Admin</h2>
       <ul class="nav-menu">
-        <li><a href="/admin"><span class="icon">📊</span> Översikt</a></li>
-        <li><a href="/admin/my-prints" class="active"><span class="icon">🎨</span> Mina Prints</a></li>
-        <li><a href="/admin/other-prints"><span class="icon">👤</span> Andras Prints</a></li>
-        <li><a href="/admin/completed"><span class="icon">✅</span> Färdiga Prints</a></li>
+        <li><a href="/admin"><span class="icon"></span> Översikt</a></li>
+        <li><a href="/admin/my-prints" class="active"><span class="icon"></span> Mina Prints</a></li>
+        <li><a href="/admin/other-prints"><span class="icon"></span> Andras Prints</a></li>
+        <li><a href="/admin/completed"><span class="icon"></span> Färdiga Prints</a></li>
       </ul>
       <ul class="nav-menu" style="margin-top:auto">
         <li><a href="/" class="btn-home">Till startsidan</a></li>
@@ -85,8 +104,42 @@
       <div class="header">
         <h1>Mina Prints</h1>
         <div class="user-info">
-          <span class="user-pill" id="userDisplay">Laddar...</span>
+          <span class="user-pill" id="userDisplay" title="Klicka för att ändra profil">Laddar...</span>
           <a href="/logout" class="btn-logout">Logga ut</a>
+        </div>
+      </div>
+
+      <!-- Profile Settings Modal -->
+      <div id="profileModal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <span class="modal-close" id="closeModal">&times;</span>
+            <h2>Profilinställningar</h2>
+          </div>
+          <div id="profileAlert"></div>
+          <form id="profileForm">
+            <div class="form-group">
+              <label for="currentUsername">Nuvarande användarnamn</label>
+              <input type="text" id="currentUsername" disabled />
+            </div>
+            <div class="form-group">
+              <label for="newUsername">Nytt användarnamn (valfritt)</label>
+              <input type="text" id="newUsername" placeholder="Lämna tomt för att behålla" />
+            </div>
+            <div class="form-group">
+              <label for="currentPassword">Nuvarande lösenord</label>
+              <input type="password" id="currentPassword" required />
+            </div>
+            <div class="form-group">
+              <label for="newPassword">Nytt lösenord (valfritt)</label>
+              <input type="password" id="newPassword" placeholder="Lämna tomt för att behålla" />
+            </div>
+            <div class="form-group">
+              <label for="confirmPassword">Bekräfta nytt lösenord</label>
+              <input type="password" id="confirmPassword" placeholder="Endast om du byter lösenord" />
+            </div>
+            <button type="submit" class="btn-primary" id="saveProfileBtn">Spara ändringar</button>
+          </form>
         </div>
       </div>
 
@@ -382,6 +435,100 @@
         const first = r.children[0];
         if (first) first.textContent = i + 1;
       });
+    }
+
+    // Profile modal functionality
+    const profileModal = document.getElementById('profileModal');
+    const userDisplay = document.getElementById('userDisplay');
+    const closeModal = document.getElementById('closeModal');
+    const profileForm = document.getElementById('profileForm');
+    const profileAlert = document.getElementById('profileAlert');
+
+    userDisplay.addEventListener('click', async () => {
+      profileModal.classList.add('show');
+      try {
+        const res = await fetch('/api/admin/user');
+        const userData = await res.json();
+        document.getElementById('currentUsername').value = userData.username;
+      } catch (err) {
+        console.error('Failed to fetch user data', err);
+      }
+    });
+
+    closeModal.addEventListener('click', () => {
+      profileModal.classList.remove('show');
+      profileForm.reset();
+      profileAlert.innerHTML = '';
+    });
+
+    window.addEventListener('click', (e) => {
+      if (e.target === profileModal) {
+        profileModal.classList.remove('show');
+        profileForm.reset();
+        profileAlert.innerHTML = '';
+      }
+    });
+
+    profileForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const currentPassword = document.getElementById('currentPassword').value;
+      const newUsername = document.getElementById('newUsername').value.trim();
+      const newPassword = document.getElementById('newPassword').value;
+      const confirmPassword = document.getElementById('confirmPassword').value;
+
+      if (newPassword && newPassword !== confirmPassword) {
+        showAlert('Lösenorden matchar inte!', 'error');
+        return;
+      }
+
+      if (!currentPassword) {
+        showAlert('Du måste ange ditt nuvarande lösenord', 'error');
+        return;
+      }
+
+      if (!newUsername && !newPassword) {
+        showAlert('Du måste ändra minst användarnamn eller lösenord', 'error');
+        return;
+      }
+
+      const saveBtn = document.getElementById('saveProfileBtn');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Sparar...';
+
+      try {
+        const res = await fetch('/api/admin/profile', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            currentPassword,
+            newUsername: newUsername || undefined,
+            newPassword: newPassword || undefined
+          })
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+          showAlert('Profil uppdaterad! Loggar in med nya uppgifter...', 'success');
+          setTimeout(() => {
+            window.location.href = '/admin';
+          }, 1500);
+        } else {
+          showAlert(data.message || 'Kunde inte uppdatera profil', 'error');
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Spara ändringar';
+        }
+      } catch (err) {
+        console.error('Profile update error:', err);
+        showAlert('Ett fel uppstod. Försök igen.', 'error');
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Spara ändringar';
+      }
+    });
+
+    function showAlert(message, type) {
+      profileAlert.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
     }
   </script>
 </body>
