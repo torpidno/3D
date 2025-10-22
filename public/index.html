@@ -79,10 +79,10 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      min-height: unset;
-      height: 100vh;
-      padding: 0;
+      justify-content: flex-start;
+      min-height: 100vh;
+      height: auto;
+      padding: 48px 0 64px;
       position: relative;
       z-index: 1;
     }
@@ -146,7 +146,8 @@
       color: #0f172a;
       transform: translateY(4px) scale(1.08);
     }
-    canvas {
+    /* Scope background canvas styling only to the hero background canvas */
+    #canvas {
       position: fixed;
       top: 0;
       left: 0;
@@ -156,6 +157,9 @@
       pointer-events: none;
       filter: saturate(1.2);
     }
+    /* Ensure the preview canvas fits inside its container and stays interactive */
+    #viewer { position: relative; }
+    #viewer canvas { width: 100% !important; height: 100% !important; display: block; position: absolute; inset: 0; }
   </style>
 </head>
 <body>
@@ -206,8 +210,18 @@
         <label for="modelFile">Lägg in din 3mf eller stl fil här *</label>
         <label for="modelFile" class="file-drop">
           <span id="fileLabelText">Välj eller släpp fil här (.3mf eller .stl)</span>
-          <input id="modelFile" name="modelFile" type="file" accept=".stl,.3mf" required style="display:none" />
+          <input id="modelFile" name="fil" type="file" accept=".stl,.3mf" required style="display:none" />
         </label>
+
+        <!-- 3D Preview (shown when a file is selected) -->
+        <div id="previewSection" style="display:none; margin-top:16px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <strong>Förhandsvisning</strong>
+            <small style="color:var(--muted)">Dra för att rotera • Scrolla för att zooma</small>
+          </div>
+          <div id="viewer" style="width:100%;height:360px;border:1px solid rgba(255,255,255,0.12);border-radius:10px;background:rgba(255,255,255,0.04);"></div>
+          <div id="previewMsg" class="hint" style="margin-top:8px"></div>
+        </div>
 
         <button class="btn" type="submit">Skicka in</button>
         <div class="msg" id="msg"></div>
@@ -217,6 +231,11 @@
 
   <canvas id="canvas"></canvas>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- Three.js extras for preview -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/fflate.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/3MFLoader.js"></script>
   <script>
     const canvas = document.getElementById('canvas');
     const scene = new THREE.Scene();
@@ -473,8 +492,11 @@
       fileInput.addEventListener('change', function() {
         if (fileInput.files && fileInput.files.length > 0) {
           fileLabelText.textContent = fileInput.files[0].name;
+          // Try to preview the model
+          setupPreviewForFile(fileInput.files[0]);
         } else {
           fileLabelText.textContent = 'Välj eller släpp fil här (.3mf eller .stl)';
+          teardownPreview();
         }
       });
       fileLabel.addEventListener('dragover', function(e) {
@@ -492,9 +514,154 @@
           fileInput.dispatchEvent(new Event('change'));
         }
       });
-      fileLabel.addEventListener('click', function() {
-        fileInput.click();
-      });
+      // Clicking the label already triggers the hidden input via the `for` attribute.
+      // Avoid programmatic `.click()` here to prevent some browsers from requiring a double selection.
+    }
+
+    // ===== 3D Preview Logic =====
+    let previewRenderer, previewScene, previewCamera, previewControls, previewRoot, previewAnimId;
+    const previewSection = document.getElementById('previewSection');
+    const viewer = document.getElementById('viewer');
+    const previewMsg = document.getElementById('previewMsg');
+
+    function ensurePreviewInit() {
+      if (previewRenderer) return;
+      previewScene = new THREE.Scene();
+      previewScene.background = null;
+      const w = viewer.clientWidth;
+      const h = viewer.clientHeight;
+      previewCamera = new THREE.PerspectiveCamera(50, w / h, 0.01, 1000);
+      previewCamera.position.set(0, 0.2, 0.6);
+
+      previewRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      previewRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      previewRenderer.setSize(w, h);
+      viewer.innerHTML = '';
+      viewer.appendChild(previewRenderer.domElement);
+
+      const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.9);
+      hemi.position.set(0, 1, 0);
+      const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+      dir.position.set(1, 1, 1);
+      previewScene.add(hemi, dir);
+
+      previewControls = new THREE.OrbitControls(previewCamera, previewRenderer.domElement);
+      previewControls.enableDamping = true;
+      previewControls.dampingFactor = 0.07;
+      previewControls.target.set(0, 0, 0);
+
+      previewRoot = new THREE.Group();
+      previewScene.add(previewRoot);
+
+      const grid = new THREE.GridHelper(1, 10, 0x406080, 0x203040);
+      grid.material.opacity = 0.2;
+      grid.material.transparent = true;
+      previewScene.add(grid);
+
+      animatePreview();
+      window.addEventListener('resize', onPreviewResize);
+    }
+
+    function onPreviewResize() {
+      if (!previewRenderer) return;
+      const w = viewer.clientWidth;
+      const h = viewer.clientHeight;
+      previewRenderer.setSize(w, h);
+      previewCamera.aspect = w / h;
+      previewCamera.updateProjectionMatrix();
+    }
+
+    function animatePreview() {
+      previewAnimId = requestAnimationFrame(animatePreview);
+      if (previewControls) previewControls.update();
+      if (previewRenderer && previewScene && previewCamera) {
+        previewRenderer.render(previewScene, previewCamera);
+      }
+    }
+
+    function teardownPreview() {
+      if (!previewRenderer) return;
+      // Remove previous model
+      if (previewRoot) {
+        while (previewRoot.children.length) previewRoot.remove(previewRoot.children[0]);
+      }
+      previewSection.style.display = 'none';
+      previewMsg.textContent = '';
+    }
+
+    function clearPreviewModel() {
+      if (previewRoot) {
+        while (previewRoot.children.length) previewRoot.remove(previewRoot.children[0]);
+      }
+      previewMsg.textContent = '';
+    }
+
+    function frameObject(obj) {
+      // Compute bounding box to frame the object
+      const box = new THREE.Box3().setFromObject(obj);
+      const size = new THREE.Vector3();
+      const center = new THREE.Vector3();
+      box.getSize(size);
+      box.getCenter(center);
+
+      // Re-center
+      obj.position.sub(center);
+      previewControls.target.set(0, 0, 0);
+
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const fov = previewCamera.fov * (Math.PI / 180);
+      let cameraZ = Math.abs(maxDim / Math.sin(fov / 2));
+      cameraZ = cameraZ * 0.6; // little closer
+      previewCamera.position.set(cameraZ, cameraZ * 0.2, cameraZ);
+      previewCamera.near = cameraZ / 100;
+      previewCamera.far = cameraZ * 100;
+      previewCamera.updateProjectionMatrix();
+    }
+
+    function setupPreviewForFile(file) {
+      const name = file.name.toLowerCase();
+      if (!(name.endsWith('.stl') || name.endsWith('.3mf'))) {
+        previewMsg.textContent = 'Endast .stl eller .3mf kan förhandsvisas.';
+        previewSection.style.display = 'block';
+        return;
+      }
+
+      // Make visible first so clientWidth/Height are correct
+      previewSection.style.display = 'block';
+      ensurePreviewInit();
+      clearPreviewModel();
+      onPreviewResize();
+      previewMsg.textContent = 'Laddar förhandsvisning...';
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const arrayBuffer = reader.result;
+          if (name.endsWith('.stl')) {
+            const loader = new THREE.STLLoader();
+            const geom = loader.parse(arrayBuffer);
+            const mat = new THREE.MeshStandardMaterial({ color: 0x93c5fd, metalness: 0.1, roughness: 0.8 });
+            const mesh = new THREE.Mesh(geom, mat);
+            mesh.castShadow = mesh.receiveShadow = true;
+            previewRoot.add(mesh);
+            frameObject(previewRoot);
+            previewMsg.textContent = '';
+          } else if (name.endsWith('.3mf')) {
+            const loader = new THREE.ThreeMFLoader();
+            const group = loader.parse(arrayBuffer);
+            previewRoot.add(group);
+            frameObject(previewRoot);
+            previewMsg.textContent = '';
+          }
+        } catch (e) {
+          console.error(e);
+          previewMsg.textContent = 'Kunde inte läsa modellen.';
+        }
+      };
+      reader.onerror = () => {
+        previewMsg.textContent = 'Kunde inte läsa filen.';
+      };
+      reader.readAsArrayBuffer(file);
     }
 
   </script>

@@ -241,6 +241,8 @@ function renderLoginPage(message = '') {
     button:hover{transform:translateY(-1px);box-shadow:0 10px 30px rgba(96,165,250,0.26)}
     .login-error{margin:0 0 16px 0;padding:10px 12px;border-radius:10px;background:rgba(248,113,113,0.12);border:1px solid rgba(248,113,113,0.32);color:var(--error);font-size:14px;text-align:center}
     .hint{margin:12px 0 0 0;font-size:12px;color:var(--muted);text-align:center}
+    .back-link{display:block;margin-top:16px;text-align:center;font-size:14px;color:var(--accent);text-decoration:none;transition:color .15s ease}
+    .back-link:hover{color:#93c5fd;text-decoration:underline}
   </style>
 </head>
 <body>
@@ -253,6 +255,7 @@ function renderLoginPage(message = '') {
     <input id="password" name="password" type="password" autocomplete="current-password" required />
     <button type="submit">Fortsätt</button>
     <p class="hint">Kontakta administratören om du behöver hjälp.</p>
+    <a href="/" class="back-link">← Tillbaka till startsidan</a>
   </form>
 </body>
 </html>`;
@@ -474,6 +477,21 @@ app.get('/admin/download/:id', sessionAuth, (req, res) => {
   const filePath = path.join(UPLOAD_DIR, found.file.storedName);
   if (!fs.existsSync(filePath)) return res.status(404).send('Fil saknas på servern');
   res.download(filePath, found.file.originalName);
+});
+
+// Raw file route for in-browser preview
+app.get('/admin/file/:id/raw', sessionAuth, (req, res) => {
+  const id = req.params.id;
+  const db = readDb();
+  const found = db.find(s => s.id === id);
+  if (!found) return res.status(404).send('Ej hittad');
+  const filePath = path.join(UPLOAD_DIR, found.file.storedName);
+  if (!fs.existsSync(filePath)) return res.status(404).send('Fil saknas på servern');
+  const ext = path.extname(found.file.originalName).toLowerCase();
+  const type = ext === '.stl' ? 'model/stl' : (ext === '.3mf' ? 'model/3mf' : 'application/octet-stream');
+  res.setHeader('Content-Type', type);
+  res.setHeader('Cache-Control', 'no-cache');
+  res.sendFile(filePath);
 });
 
 app.get('/api/admin/submissions', sessionAuth, (req, res) => {

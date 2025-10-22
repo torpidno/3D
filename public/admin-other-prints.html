@@ -43,8 +43,13 @@
     .idx{color:var(--muted);font-size:13px}
     a{color:#93c5fd;text-decoration:none}
     a:hover{text-decoration:underline}
-    .btn-del{display:inline-block;margin:4px 4px 4px 0;padding:6px 10px;border-radius:6px;font-size:12px;border:none;cursor:pointer;font-weight:500;background:#ef4444;color:#fff}
-    .btn-del:hover{filter:brightness(1.1)}
+    .btn-del,.btn-view{display:inline-block;margin:4px 4px 4px 0;padding:8px 14px;border-radius:8px;font-size:13px;border:none;cursor:pointer;font-weight:600;transition:all 0.2s;box-shadow:0 2px 6px rgba(0,0,0,0.3)}
+    .btn-del{background:#ef4444;color:#fff}
+    .btn-del:hover{background:#dc2626;transform:translateY(-1px);box-shadow:0 4px 10px rgba(239,68,68,0.4)}
+    .btn-view{background:#60a5fa;color:#0b1220}
+    .btn-view:hover{background:#3b82f6;transform:translateY(-1px);box-shadow:0 4px 10px rgba(96,165,250,0.5)}
+    td a{display:inline-block;margin:4px 4px 4px 0;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;transition:all 0.2s;box-shadow:0 2px 6px rgba(0,0,0,0.3);background:rgba(147,197,253,0.15);color:#93c5fd;text-decoration:none;border:1px solid rgba(147,197,253,0.3)}
+    td a:hover{background:rgba(147,197,253,0.25);border-color:#93c5fd;transform:translateY(-1px);box-shadow:0 4px 10px rgba(147,197,253,0.3);text-decoration:none}
     .beskrivning-cell.long-desc{cursor:pointer}
     .show-more{color:#93c5fd;font-size:12px;margin-left:4px}
     .desc-modal-bg{position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.55);z-index:1000;display:flex;align-items:center;justify-content:center}
@@ -79,6 +84,12 @@
       .layout{flex-direction:column}
     }
   </style>
+  <!-- 3D Viewer libs -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/fflate.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/3MFLoader.js"></script>
 </head>
 <body>
   <div class="layout">
@@ -135,6 +146,19 @@
             </div>
             <button type="submit" class="btn-primary" id="saveProfileBtn">Spara ändringar</button>
           </form>
+        </div>
+      </div>
+
+      <!-- 3D Viewer Modal -->
+      <div id="viewerModal" class="modal">
+        <div class="modal-content" style="max-width:860px;width:92%">
+          <div class="modal-header">
+            <span class="modal-close" id="closeViewer">&times;</span>
+            <h2>3D Förhandsvisning</h2>
+          </div>
+          <div style="margin-bottom:8px;color:var(--muted);font-size:13px">Dra för att rotera • Scrolla för att zooma</div>
+          <div id="viewer3d" style="width:100%;height:520px;border:1px solid var(--border);border-radius:10px;background:rgba(255,255,255,0.04)"></div>
+          <div id="viewerMsg" class="hint" style="margin-top:8px"></div>
         </div>
       </div>
 
@@ -227,9 +251,12 @@
       tbody.innerHTML = items.map((s, idx) => {
         const descCell = renderDescriptionCell(s.beskrivning);
         const dateStr = formatShortDate(s.submittedAt);
+        const extName = ((s.file && (s.file.originalName || s.file.storedName)) || '').toLowerCase();
+        const viewExt = extName.endsWith('.stl') ? 'stl' : '3mf';
 
         const actions = [
-          `<a href="/admin/download/${s.id}">Ladda ner</a>`
+          `<button type=\"button\" class=\"btn-view\" data-view-id=\"${s.id}\" data-ext=\"${viewExt}\">Visa</button>`,
+          `<a href=\"/admin/download/${s.id}\">Ladda ner</a>`
         ];
 
         // Only admins can delete other people's prints
@@ -359,8 +386,107 @@
         } catch (err) {
           alert('Kunde inte ta bort. Försök igen.');
         }
+      } else if (target.hasAttribute('data-view-id')) {
+        const id = target.getAttribute('data-view-id');
+        if (!id) return;
+        const ext = (target.getAttribute('data-ext') || '').toLowerCase();
+        const url = ext === 'stl' ? `/admin/file/${id}/raw?format=stl` : `/admin/file/${id}/raw`;
+        openViewer(url);
       }
     });
+
+    // ===== 3D Viewer Logic =====
+    const viewerModal = document.getElementById('viewerModal');
+    const closeViewer = document.getElementById('closeViewer');
+    const viewer3d = document.getElementById('viewer3d');
+    const viewerMsg = document.getElementById('viewerMsg');
+    let vRenderer, vScene, vCamera, vControls, vRoot, vAnimId;
+
+    function ensureViewerInit() {
+      if (vRenderer) return;
+      vScene = new THREE.Scene();
+      const w = viewer3d.clientWidth, h = viewer3d.clientHeight;
+      vCamera = new THREE.PerspectiveCamera(50, w / h, 0.01, 5000);
+      vCamera.position.set(0.6, 0.35, 0.9);
+      vRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      vRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      vRenderer.setSize(w, h);
+      viewer3d.innerHTML = '';
+      viewer3d.appendChild(vRenderer.domElement);
+      const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.9);
+      const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+      dir.position.set(1, 1, 1);
+      vScene.add(hemi, dir);
+      vControls = new THREE.OrbitControls(vCamera, vRenderer.domElement);
+      vControls.enableDamping = true;
+      vRoot = new THREE.Group();
+      vScene.add(vRoot);
+      const grid = new THREE.GridHelper(1, 10, 0x406080, 0x203040);
+      grid.material.opacity = 0.2; grid.material.transparent = true; vScene.add(grid);
+      animateViewer();
+      window.addEventListener('resize', onViewerResize);
+    }
+
+    function onViewerResize() {
+      if (!vRenderer) return;
+      const w = viewer3d.clientWidth, h = viewer3d.clientHeight;
+      vRenderer.setSize(w, h);
+      vCamera.aspect = w / h; vCamera.updateProjectionMatrix();
+    }
+
+    function animateViewer() {
+      vAnimId = requestAnimationFrame(animateViewer);
+      if (vControls) vControls.update();
+      if (vRenderer && vScene && vCamera) vRenderer.render(vScene, vCamera);
+    }
+
+    function clearViewer() {
+      if (!vRoot) return;
+      while (vRoot.children.length) vRoot.remove(vRoot.children[0]);
+    }
+
+    function frameObject(obj) {
+      const box = new THREE.Box3().setFromObject(obj);
+      const size = new THREE.Vector3(); const center = new THREE.Vector3();
+      box.getSize(size); box.getCenter(center);
+      obj.position.sub(center);
+      const maxDim = Math.max(size.x, size.y, size.z) || 1;
+      const fov = vCamera.fov * (Math.PI/180);
+      let camDist = Math.abs(maxDim / Math.sin(fov/2));
+      camDist *= 0.7;
+      vCamera.position.set(camDist, camDist*0.25, camDist);
+      vCamera.near = camDist/100; vCamera.far = camDist*100; vCamera.updateProjectionMatrix();
+      vControls.target.set(0,0,0);
+    }
+
+    function openViewer(url) {
+      viewerModal.classList.add('show');
+      ensureViewerInit();
+      clearViewer();
+      onViewerResize();
+      viewerMsg.textContent = 'Laddar modell...';
+      const lower = url.toLowerCase();
+      if (lower.endsWith('.stl') || lower.includes('format=stl')) {
+        const loader = new THREE.STLLoader();
+        loader.load(url, (geom) => {
+          const mat = new THREE.MeshStandardMaterial({ color: 0x93c5fd, metalness:0.1, roughness:0.8 });
+          const mesh = new THREE.Mesh(geom, mat);
+          vRoot.add(mesh);
+          frameObject(vRoot);
+          viewerMsg.textContent = '';
+        }, undefined, (e)=>{ viewerMsg.textContent = 'Kunde inte läsa STL.'; });
+      } else {
+        const loader = new THREE.ThreeMFLoader();
+        loader.load(url, (group) => {
+          vRoot.add(group);
+          frameObject(vRoot);
+          viewerMsg.textContent = '';
+        }, undefined, (e)=>{ viewerMsg.textContent = 'Kunde inte läsa 3MF.'; });
+      }
+    }
+
+    closeViewer.addEventListener('click', ()=>{ viewerModal.classList.remove('show'); });
+    window.addEventListener('click',(e)=>{ if(e.target===viewerModal){ viewerModal.classList.remove('show'); }});
 
     // Sortable tables
     function initSortable(tableId) {
