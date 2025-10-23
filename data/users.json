@@ -1,13 +1,13 @@
 [
   {
-    "username": "admin",
-    "password": "admin123",
-    "role": "admin",
-    "displayName": "Admin"
+    "username": "Master",
+    "password": "120324",
+    "role": "master",
+    "displayName": "Master"
   },
   {
-    "username": "Torpidno",
-    "password": "567007",
+    "username": "noah",
+    "password": "noah123",
     "role": "noah",
     "displayName": "Noah"
   },
@@ -16,5 +16,11 @@
     "password": "alex123",
     "role": "alex",
     "displayName": "Alex"
+  },
+  {
+    "username": "axel",
+    "password": "axel123",
+    "displayName": "Axel",
+    "role": "axel"
   }
 ]

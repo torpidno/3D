@@ -190,10 +190,7 @@
           <div>
             <label for="preferens">Har du preferens på vem *</label>
             <select id="preferens" name="preferens" required>
-              <option value="" disabled selected>Välj...</option>
-              <option value="Noah">Noah</option>
-              <option value="Alex">Alex</option>
-              <option value="Vem som">Vem som</option>
+              <option value="" disabled selected>Laddar användare...</option>
             </select>
           </div>
           <div>
@@ -257,7 +254,7 @@
     const heroGroup = new THREE.Group();
     scene.add(heroGroup);
 
-  const palette = [0x60a5fa, 0x7c3aed, 0x38bdf8, 0xf97316];
+  const palette = [0x60a5fa, 0x7c3aed, 0x38bdf8, 0x8b7ab8];
     const makeMaterial = (color) => new THREE.MeshStandardMaterial({
       color,
       metalness: 0.6,
@@ -463,6 +460,42 @@
 
     const form = document.getElementById('uploadForm');
     const msg = document.getElementById('msg');
+    
+    // Load users dynamically for preferens dropdown
+    (async function loadUsers() {
+      const preferensSelect = document.getElementById('preferens');
+      try {
+        const res = await fetch('/api/users');
+        if (res.ok) {
+          const users = await res.json();
+          // Clear loading option
+          preferensSelect.innerHTML = '<option value="" disabled selected>Välj...</option>';
+          
+          // Add each user (capitalized username)
+          users.forEach(u => {
+            const displayName = u.username.charAt(0).toUpperCase() + u.username.slice(1);
+            const option = document.createElement('option');
+            option.value = displayName;
+            option.textContent = displayName;
+            preferensSelect.appendChild(option);
+          });
+          
+          // Add "Vem som" option at the end
+          const vemsomOption = document.createElement('option');
+          vemsomOption.value = 'Vem som';
+          vemsomOption.textContent = 'Vem som';
+          preferensSelect.appendChild(vemsomOption);
+        } else {
+          // Fallback if API fails
+          preferensSelect.innerHTML = '<option value="" disabled selected>Välj...</option><option value="Vem som">Vem som</option>';
+        }
+      } catch (err) {
+        console.error('Failed to load users:', err);
+        // Fallback if API fails
+        preferensSelect.innerHTML = '<option value="" disabled selected>Välj...</option><option value="Vem som">Vem som</option>';
+      }
+    })();
+    
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       msg.textContent = '';

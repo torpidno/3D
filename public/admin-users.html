@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Användarhantering – 3D Admin</title>
+  <link rel="icon" type="image/png" href="/Pauli.png" />
+  <style>
+    :root{--bg:#020617;--card:#111827;--text:#e5e7eb;--muted:#9ca3af;--accent:#60a5fa;--border:rgba(255,255,255,0.1);--sidebar:#0f172a;--hover:rgba(255,255,255,0.06)}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+    .layout{display:flex;min-height:100vh}
+    .sidebar{width:260px;background:var(--sidebar);border-right:1px solid var(--border);padding:20px;position:fixed;height:100vh;overflow-y:auto;display:flex;flex-direction:column;z-index:999}
+    .sidebar h2{margin:0 0 20px 0;font-size:20px;color:var(--accent)}
+    .nav-menu{list-style:none;padding:0;margin:0}
+    .nav-menu li{margin-bottom:8px}
+    .nav-menu a{display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:10px;text-decoration:none;color:var(--text);transition:background 0.2s}
+    .nav-menu a:hover{background:var(--hover)}
+    .nav-menu a.active{background:var(--accent);color:#0b1220;font-weight:600}
+    .nav-menu .icon{font-size:18px}
+    .nav-menu a.btn-home{border:1px solid var(--border);background:transparent;justify-content:center}
+    .nav-menu a.btn-home:hover{background:var(--hover);border-color:var(--accent)}
+    .hamburger{display:none;position:fixed;top:20px;left:20px;z-index:1001;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px;cursor:pointer;width:44px;height:44px;flex-direction:column;justify-content:center;align-items:center;gap:5px}
+    .hamburger span{display:block;width:24px;height:3px;background:var(--text);border-radius:2px;transition:all 0.3s}
+    .hamburger.active span:nth-child(1){transform:rotate(45deg) translate(7px,7px)}
+    .hamburger.active span:nth-child(2){opacity:0}
+    .hamburger.active span:nth-child(3){transform:rotate(-45deg) translate(7px,-7px)}
+    .sidebar-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:998}
+    .nav-separator{height:1px;background:var(--border);margin:16px 0}
+    .main-content{margin-left:260px;flex:1;padding:20px;max-width:1600px}
+    .header{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:center}
+    .header h1{margin:0;font-size:28px}
+    .user-info{display:flex;align-items:center;gap:12px}
+    .user-pill{padding:8px 14px;border-radius:999px;border:1px solid rgba(148,163,184,0.24);background:rgba(148,163,184,0.12);color:var(--muted);font-size:13px;cursor:pointer;transition:all 0.2s}
+    .user-pill:hover{background:rgba(148,163,184,0.2);border-color:rgba(148,163,184,0.4)}
+    .btn-logout{background:#ef4444;color:#fff;padding:8px 14px;border-radius:8px;text-decoration:none;font-weight:500}
+    .btn-logout:hover{filter:brightness(1.1)}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,0.45);margin-bottom:20px}
+    .card-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+    .card-header h2{margin:0;font-size:20px}
+    .card-body{padding:20px}
+    .btn-add{background:var(--accent);color:#0b1220;padding:10px 18px;border-radius:8px;border:none;font-weight:600;cursor:pointer;transition:all 0.2s}
+    .btn-add:hover{filter:brightness(1.1);transform:translateY(-1px)}
+    .user-list{display:grid;gap:16px;margin-top:20px}
+    .user-item{background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:10px;padding:16px;display:flex;justify-content:space-between;align-items:center;transition:background 0.2s}
+    .user-item:hover{background:var(--hover)}
+    .user-details h3{margin:0 0 4px 0;font-size:16px;font-weight:600}
+    .user-details p{margin:0;font-size:13px;color:var(--muted)}
+    .role-badge{display:inline-block;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600;margin-top:6px;background:rgba(96,165,250,0.2);color:#60a5fa;border:1px solid rgba(96,165,250,0.3)}
+    .role-badge.master{background:rgba(168,85,247,0.2);color:#a855f7;border:1px solid rgba(168,85,247,0.3)}
+    .user-actions{display:flex;gap:8px}
+    .btn-edit,.btn-delete{padding:8px 14px;border-radius:8px;font-size:13px;border:none;cursor:pointer;font-weight:600;transition:all 0.2s}
+    .btn-edit{background:#60a5fa;color:#0b1220}
+    .btn-edit:hover{background:#3b82f6;transform:translateY(-1px)}
+    .btn-delete{background:#ef4444;color:#fff}
+    .btn-delete:hover{background:#dc2626;transform:translateY(-1px)}
+    .modal{display:none;position:fixed;z-index:1000;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,0.7);align-items:center;justify-content:center}
+    .modal.show{display:flex}
+    .modal-content{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:30px;max-width:500px;width:90%;box-shadow:0 12px 40px rgba(0,0,0,0.6)}
+    .modal-header{margin-bottom:24px;display:flex;justify-content:space-between;align-items:center}
+    .modal-header h2{margin:0;font-size:24px}
+    .modal-close{font-size:28px;font-weight:bold;color:var(--muted);cursor:pointer;line-height:20px;background:none;border:none;padding:0}
+    .modal-close:hover{color:var(--text)}
+    .form-group{margin-bottom:20px}
+    .form-group label{display:block;margin-bottom:8px;color:var(--muted);font-size:14px;font-weight:500}
+    .form-group input,.form-group select{width:100%;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:14px}
+    .form-group input:focus,.form-group select:focus{outline:none;border-color:var(--accent)}
+    .btn-primary{background:var(--accent);color:#0b1220;padding:12px 24px;border:none;border-radius:8px;font-weight:600;cursor:pointer;width:100%;margin-top:8px;transition:all 0.2s}
+    .btn-primary:hover{filter:brightness(1.1);transform:translateY(-1px)}
+    .btn-primary:disabled{opacity:0.5;cursor:not-allowed}
+    .alert{padding:12px;border-radius:8px;margin-bottom:16px;font-size:14px}
+    .alert-success{background:rgba(34,197,94,0.2);border:1px solid rgba(34,197,94,0.4);color:#86efac}
+    .alert-error{background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.4);color:#fca5a5}
+    .warning-text{background:rgba(249,115,22,0.12);border:1px solid rgba(249,115,22,0.32);border-radius:8px;padding:12px;margin-top:12px;font-size:13px;color:#fb923c}
+    @media (max-width:768px){
+      .hamburger{display:flex}
+      .sidebar{transform:translateX(-100%);transition:transform 0.3s ease}
+      .sidebar.mobile-open{transform:translateX(0)}
+      .sidebar-overlay.show{display:block}
+      .main-content{margin-left:0;padding-top:80px}
+      .header{margin-top:0}
+      .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+      table{min-width:900px}
+    }
+  </style>
+</head>
+<body>
+  <div class="hamburger" id="hamburger">
+    <span></span>
+    <span></span>
+    <span></span>
+  </div>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+  <div class="layout">
+    <aside class="sidebar" id="sidebar">
+      <h2>3D Admin</h2>
+      <ul class="nav-menu">
+        <li><a href="/admin"><span class="icon"></span> Översikt</a></li>
+        <li><a href="/admin/my-prints"><span class="icon"></span> Mina Prints</a></li>
+        <li><a href="/admin/other-prints"><span class="icon"></span> Andras Prints</a></li>
+        <li><a href="/admin/completed"><span class="icon"></span> Färdiga Prints</a></li>
+      </ul>
+      <div class="nav-separator"></div>
+      <ul class="nav-menu">
+        <li><a href="/admin/users" class="active"><span class="icon">👥</span> Användarhantering</a></li>
+      </ul>
+      <ul class="nav-menu" style="margin-top:auto">
+        <li><a href="/" class="btn-home">Till startsidan</a></li>
+      </ul>
+    </aside>
+
+    <main class="main-content">
+      <div class="header">
+        <h1>Användarhantering</h1>
+        <div class="user-info">
+          <span class="user-pill" id="userDisplay">Laddar...</span>
+          <a href="/logout" class="btn-logout">Logga ut</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h2>Administratörer</h2>
+          <button class="btn-add" id="addUserBtn">+ Lägg till användare</button>
+        </div>
+        <div class="card-body">
+          <div class="user-list" id="userList">
+            <p style="text-align:center;color:var(--muted)">Laddar användare...</p>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- User Modal -->
+  <div id="userModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="modalTitle">Lägg till användare</h2>
+        <button class="modal-close" id="closeModal">&times;</button>
+      </div>
+      <div id="modalAlert"></div>
+      <form id="userForm">
+        <input type="hidden" id="userId" />
+        <div class="form-group">
+          <label for="username">Användarnamn</label>
+          <input type="text" id="username" required />
+        </div>
+        <div class="form-group">
+          <label for="displayName">Visningsnamn</label>
+          <input type="text" id="displayName" required />
+        </div>
+        <div class="form-group">
+          <label for="password">Lösenord</label>
+          <input type="password" id="password" />
+          <small style="color:var(--muted);font-size:12px" id="passwordHint">Lämna tomt för att behålla nuvarande lösenord</small>
+        </div>
+        <div class="warning-text" style="margin-top:16px;font-size:13px">
+          ℹ️ Rollen kommer automatiskt att skapas baserat på användarnamnet.
+        </div>
+        <div class="warning-text" id="masterWarning" style="display:none">
+          ⚠️ Master-kontot kan inte redigeras via denna sida av säkerhetsskäl.
+        </div>
+        <button type="submit" class="btn-primary" id="saveBtn">Spara</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // Hamburger menu functionality
+    const hamburger = document.getElementById('hamburger');
+    const sidebar = document.getElementById('sidebar');
+    const sidebarOverlay = document.getElementById('sidebarOverlay');
+
+    function toggleSidebar() {
+      hamburger.classList.toggle('active');
+      sidebar.classList.toggle('mobile-open');
+      sidebarOverlay.classList.toggle('show');
+    }
+
+    hamburger.addEventListener('click', toggleSidebar);
+    sidebarOverlay.addEventListener('click', toggleSidebar);
+
+    // Close sidebar when clicking a link on mobile
+    const navLinks = sidebar.querySelectorAll('a');
+    navLinks.forEach(link => {
+      link.addEventListener('click', () => {
+        if (window.innerWidth <= 768) {
+          toggleSidebar();
+        }
+      });
+    });
+
+    let users = [];
+    let editingUserId = null;
+
+    const userModal = document.getElementById('userModal');
+    const closeModal = document.getElementById('closeModal');
+    const addUserBtn = document.getElementById('addUserBtn');
+    const userForm = document.getElementById('userForm');
+    const modalAlert = document.getElementById('modalAlert');
+    const passwordHint = document.getElementById('passwordHint');
+    const masterWarning = document.getElementById('masterWarning');
+
+    // Check if user is master
+    (async function() {
+      try {
+        const res = await fetch('/api/admin/user');
+        const userData = await res.json();
+        document.getElementById('userDisplay').textContent = `Inloggad som ${userData.displayName || userData.username}`;
+        
+        if (userData.role !== 'master') {
+          window.location.href = '/admin';
+          return;
+        }
+
+        loadUsers();
+      } catch (err) {
+        console.error('Failed to verify user', err);
+        window.location.href = '/admin/login';
+      }
+    })();
+
+    async function loadUsers() {
+      try {
+        const res = await fetch('/api/admin/users');
+        if (!res.ok) throw new Error('Failed to fetch users');
+        users = await res.json();
+        renderUsers();
+      } catch (err) {
+        console.error('Failed to load users', err);
+        document.getElementById('userList').innerHTML = '<p style="text-align:center;color:#ef4444">Kunde inte ladda användare.</p>';
+      }
+    }
+
+    function renderUsers() {
+      const userList = document.getElementById('userList');
+      if (users.length === 0) {
+        userList.innerHTML = '<p style="text-align:center;color:var(--muted)">Inga användare hittades.</p>';
+        return;
+      }
+
+      userList.innerHTML = users.map(user => {
+        const canEdit = user.role !== 'master';
+        return `
+          <div class="user-item">
+            <div class="user-details">
+              <h3>${escapeHtml(user.displayName || user.username)}</h3>
+              <p>@${escapeHtml(user.username)}</p>
+              <span class="role-badge ${user.role}">${getRoleLabel(user.role)}</span>
+            </div>
+            <div class="user-actions">
+              ${canEdit ? `
+                <button class="btn-edit" onclick="editUser('${user.username}')">Redigera</button>
+                <button class="btn-delete" onclick="deleteUser('${user.username}')">Ta bort</button>
+              ` : '<span style="color:var(--muted);font-size:13px">Skyddad</span>'}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function getRoleLabel(role) {
+      // Capitalize first letter of role
+      return role.charAt(0).toUpperCase() + role.slice(1);
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    addUserBtn.addEventListener('click', () => {
+      editingUserId = null;
+      document.getElementById('modalTitle').textContent = 'Lägg till användare';
+      userForm.reset();
+      passwordHint.style.display = 'none';
+      masterWarning.style.display = 'none';
+      document.getElementById('password').required = true;
+      modalAlert.innerHTML = '';
+      userModal.classList.add('show');
+    });
+
+    function editUser(username) {
+      const user = users.find(u => u.username === username);
+      if (!user) return;
+      
+      if (user.role === 'master') {
+        alert('Master-kontot kan inte redigeras.');
+        return;
+      }
+
+      editingUserId = username;
+      document.getElementById('modalTitle').textContent = 'Redigera användare';
+      document.getElementById('username').value = user.username;
+      document.getElementById('displayName').value = user.displayName || user.username;
+      document.getElementById('password').value = '';
+      document.getElementById('password').required = false;
+      passwordHint.style.display = 'block';
+      masterWarning.style.display = 'none';
+      modalAlert.innerHTML = '';
+      userModal.classList.add('show');
+    }
+
+    async function deleteUser(username) {
+      const user = users.find(u => u.username === username);
+      if (!user) return;
+
+      if (user.role === 'master') {
+        alert('Master-kontot kan inte tas bort.');
+        return;
+      }
+
+      if (!confirm(`Är du säker på att du vill ta bort användaren "${user.displayName || username}"?`)) {
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/admin/users/${username}`, {
+          method: 'DELETE'
+        });
+
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.message || 'Failed to delete user');
+        }
+
+        showAlert('Användare borttagen!', 'success');
+        loadUsers();
+      } catch (err) {
+        alert('Kunde inte ta bort användaren: ' + err.message);
+      }
+    }
+
+    closeModal.addEventListener('click', () => {
+      userModal.classList.remove('show');
+    });
+
+    window.addEventListener('click', (e) => {
+      if (e.target === userModal) {
+        userModal.classList.remove('show');
+      }
+    });
+
+    userForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const username = document.getElementById('username').value.trim();
+      const displayName = document.getElementById('displayName').value.trim();
+      const password = document.getElementById('password').value;
+
+      if (!username || !displayName) {
+        showAlert('Användarnamn och visningsnamn måste fyllas i', 'error');
+        return;
+      }
+
+      if (!editingUserId && !password) {
+        showAlert('Lösenord krävs för nya användare', 'error');
+        return;
+      }
+
+      const saveBtn = document.getElementById('saveBtn');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Sparar...';
+
+      try {
+        const url = editingUserId ? `/api/admin/users/${editingUserId}` : '/api/admin/users';
+        const method = editingUserId ? 'PUT' : 'POST';
+
+        const body = {
+          username,
+          displayName
+        };
+
+        if (password) {
+          body.password = password;
+        }
+
+        const res = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+          showAlert(editingUserId ? 'Användare uppdaterad!' : 'Användare skapad!', 'success');
+          userModal.classList.remove('show');
+          loadUsers();
+        } else {
+          showAlert(data.message || 'Kunde inte spara användare', 'error');
+        }
+      } catch (err) {
+        console.error('Save error:', err);
+        showAlert('Ett fel uppstod. Försök igen.', 'error');
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Spara';
+      }
+    });
+
+    function showAlert(message, type) {
+      modalAlert.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+      setTimeout(() => {
+        modalAlert.innerHTML = '';
+      }, 3000);
+    }
+  </script>
+</body>
+</html>

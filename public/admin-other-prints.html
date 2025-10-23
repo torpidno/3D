@@ -10,7 +10,7 @@
     *{box-sizing:border-box}
     body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
     .layout{display:flex;min-height:100vh}
-    .sidebar{width:260px;background:var(--sidebar);border-right:1px solid var(--border);padding:20px;position:fixed;height:100vh;overflow-y:auto;display:flex;flex-direction:column}
+    .sidebar{width:260px;background:var(--sidebar);border-right:1px solid var(--border);padding:20px;position:fixed;height:100vh;overflow-y:auto;display:flex;flex-direction:column;z-index:999}
     .sidebar h2{margin:0 0 20px 0;font-size:20px;color:var(--accent)}
     .nav-menu{list-style:none;padding:0;margin:0}
     .nav-menu li{margin-bottom:8px}
@@ -20,6 +20,12 @@
     .nav-menu .icon{font-size:18px}
     .nav-menu a.btn-home{border:1px solid var(--border);background:transparent;justify-content:center}
     .nav-menu a.btn-home:hover{background:var(--hover);border-color:var(--accent)}
+    .hamburger{display:none;position:fixed;top:20px;left:20px;z-index:1001;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px;cursor:pointer;width:44px;height:44px;flex-direction:column;justify-content:center;align-items:center;gap:5px}
+    .hamburger span{display:block;width:24px;height:3px;background:var(--text);border-radius:2px;transition:all 0.3s}
+    .hamburger.active span:nth-child(1){transform:rotate(45deg) translate(7px,7px)}
+    .hamburger.active span:nth-child(2){opacity:0}
+    .hamburger.active span:nth-child(3){transform:rotate(-45deg) translate(7px,-7px)}
+    .sidebar-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:998}
     .main-content{margin-left:260px;flex:1;padding:20px;max-width:1600px}
     .header{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:center}
     .header h1{margin:0;font-size:28px}
@@ -79,9 +85,14 @@
     .alert-success{background:rgba(34,197,94,0.2);border:1px solid rgba(34,197,94,0.4);color:#86efac}
     .alert-error{background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.4);color:#fca5a5}
     @media (max-width:768px){
-      .sidebar{width:100%;height:auto;position:relative;border-right:none;border-bottom:1px solid var(--border)}
-      .main-content{margin-left:0}
-      .layout{flex-direction:column}
+      .hamburger{display:flex}
+      .sidebar{transform:translateX(-100%);transition:transform 0.3s ease}
+      .sidebar.mobile-open{transform:translateX(0)}
+      .sidebar-overlay.show{display:block}
+      .main-content{margin-left:0;padding-top:80px}
+      .header{margin-top:0}
+      .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+      table{min-width:900px}
     }
   </style>
   <!-- 3D Viewer libs -->
@@ -92,8 +103,14 @@
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/3MFLoader.js"></script>
 </head>
 <body>
+  <div class="hamburger" id="hamburger">
+    <span></span>
+    <span></span>
+    <span></span>
+  </div>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
   <div class="layout">
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar">
       <h2>3D Admin</h2>
       <ul class="nav-menu">
         <li><a href="/admin"><span class="icon"></span> Översikt</a></li>
@@ -101,6 +118,12 @@
         <li><a href="/admin/other-prints" class="active"><span class="icon"></span> Andras Prints</a></li>
         <li><a href="/admin/completed"><span class="icon"></span> Färdiga Prints</a></li>
       </ul>
+      <div id="masterMenu" style="display:none">
+        <div style="height:1px;background:rgba(255,255,255,0.1);margin:16px 0"></div>
+        <ul class="nav-menu">
+          <li><a href="/admin/users"><span class="icon">👥</span> Användarhantering</a></li>
+        </ul>
+      </div>
       <ul class="nav-menu" style="margin-top:auto">
         <li><a href="/" class="btn-home">Till startsidan</a></li>
       </ul>
@@ -193,6 +216,30 @@
   </div>
 
   <script>
+    // Hamburger menu functionality
+    const hamburger = document.getElementById('hamburger');
+    const sidebar = document.getElementById('sidebar');
+    const sidebarOverlay = document.getElementById('sidebarOverlay');
+
+    function toggleSidebar() {
+      hamburger.classList.toggle('active');
+      sidebar.classList.toggle('mobile-open');
+      sidebarOverlay.classList.toggle('show');
+    }
+
+    hamburger.addEventListener('click', toggleSidebar);
+    sidebarOverlay.addEventListener('click', toggleSidebar);
+
+    // Close sidebar when clicking a link on mobile
+    const navLinks = sidebar.querySelectorAll('a');
+    navLinks.forEach(link => {
+      link.addEventListener('click', () => {
+        if (window.innerWidth <= 768) {
+          toggleSidebar();
+        }
+      });
+    });
+
     let userRole = '';
     let otherPerson = '';
 
@@ -204,15 +251,33 @@
         userRole = userData.role;
         document.getElementById('userDisplay').textContent = `Inloggad som ${userData.displayName || userData.username}`;
 
-        // Determine other person
-        if (userRole === 'noah') {
-          otherPerson = 'Alex';
-        } else if (userRole === 'alex') {
-          otherPerson = 'Noah';
-        } else if (userRole === 'admin') {
-          // Admin sees all, show info message
+        // Show master menu if user is master
+        if (userRole === 'master') {
+          document.getElementById('masterMenu').style.display = 'block';
+        }
+
+        // Fetch all users to determine "other users"
+        const myDisplayName = userRole.charAt(0).toUpperCase() + userRole.slice(1);
+        
+        // Get list of all users for filtering
+        let otherUserNames = [];
+        if (userRole === 'master' || userRole === 'admin') {
+          // Show info message for admin/master
           document.getElementById('infoMessage').style.display = 'block';
-          document.getElementById('infoMessage').textContent = 'Som admin kan du se alla prints från både Noah och Alex.';
+          document.getElementById('infoMessage').textContent = `Som ${myDisplayName} kan du se alla andras prints.`;
+        } else {
+          // Regular users - we'll show prints from others
+          try {
+            const usersRes = await fetch('/api/admin/users');
+            if (usersRes.ok) {
+              const users = await usersRes.json();
+              otherUserNames = users
+                .filter(u => u.role !== userRole) // Exclude self
+                .map(u => u.username.charAt(0).toUpperCase() + u.username.slice(1));
+            }
+          } catch (e) {
+            console.warn('Could not fetch users list', e);
+          }
         }
 
         // Fetch submissions
@@ -220,14 +285,14 @@
         let submissions = await res.json();
 
         // Filter based on role
-        if (userRole === 'noah') {
-          // Show only Alex's prints
-          submissions = submissions.filter(s => s.preferens === 'Alex');
-        } else if (userRole === 'alex') {
-          // Show only Noah's prints
-          submissions = submissions.filter(s => s.preferens === 'Noah');
+        if (userRole === 'master' || userRole === 'admin') {
+          // Admin and Master see all (no filter)
+        } else {
+          // Regular users see other users' prints (not their own, not "Vem som")
+          submissions = submissions.filter(s => 
+            s.preferens !== myDisplayName && s.preferens !== 'Vem som'
+          );
         }
-        // Admin sees all (no filter)
 
         const actives = submissions.filter(s => !s.done).reverse();
 
@@ -243,7 +308,7 @@
     function renderTable(bodyId, items, isDone) {
       const tbody = document.getElementById(bodyId);
       if (items.length === 0) {
-        const msg = userRole === 'admin' ? 'Inga prints här.' : `Inga prints från ${otherPerson} här.`;
+        const msg = (userRole === 'admin' || userRole === 'master') ? 'Inga prints här.' : 'Inga prints från andra användare här.';
         tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:20px">${msg}</td></tr>`;
         return;
       }
@@ -259,14 +324,14 @@
           `<a href=\"/admin/download/${s.id}\">Ladda ner</a>`
         ];
 
-        // Only admins can delete other people's prints
-        if (userRole === 'admin') {
+        // Only admins and master can delete other people's prints
+        if (userRole === 'admin' || userRole === 'master') {
           actions.push(`<button type="button" class="btn-del" data-id="${s.id}">Ta bort</button>`);
         }
 
         return `<tr data-id="${s.id}">
           <td class="idx">${idx + 1}</td>
-          <td><input type="checkbox" class="toggle-done" data-id="${s.id}" ${isDone ? 'checked' : ''} ${userRole !== 'admin' ? 'disabled' : ''} /></td>
+          <td><input type="checkbox" class="toggle-done" data-id="${s.id}" ${isDone ? 'checked' : ''} ${(userRole !== 'admin' && userRole !== 'master') ? 'disabled' : ''} /></td>
           <td>${escapeHtml(s.namn)}</td>
           <td><a href="mailto:${escapeHtml(s.mejl)}">${escapeHtml(s.mejl)}</a></td>
           ${descCell}
@@ -323,12 +388,12 @@
       document.body.appendChild(bg);
     });
 
-    // Toggle done (admin only)
+    // Toggle done (admin and master only)
     document.addEventListener('change', async (e) => {
       const cb = e.target;
       if (!(cb instanceof HTMLInputElement)) return;
       if (!cb.classList.contains('toggle-done')) return;
-      if (userRole !== 'admin') return; // Only admin can toggle
+      if (userRole !== 'admin' && userRole !== 'master') return; // Only admin and master can toggle
       
       const id = cb.getAttribute('data-id');
       const done = cb.checked;
@@ -352,7 +417,7 @@
         renumberTable('doneTable');
         
         if (srcTbody && !srcTbody.querySelector('tr[data-id]')) {
-          const msg = userRole === 'admin' ? 'Inga prints här.' : `Inga prints från ${otherPerson} här.`;
+          const msg = (userRole === 'admin' || userRole === 'master') ? 'Inga prints här.' : `Inga prints från ${otherPerson} här.`;
           srcTbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:20px">${msg}</td></tr>`;
         }
       } catch (err) {
@@ -361,13 +426,13 @@
       }
     });
 
-    // Delete (admin only)
+    // Delete (admin and master only)
     document.addEventListener('click', async (e) => {
       const target = e.target;
       if (!(target instanceof HTMLElement)) return;
       
       if (target.classList.contains('btn-del')) {
-        if (userRole !== 'admin') return;
+        if (userRole !== 'admin' && userRole !== 'master') return;
         const id = target.getAttribute('data-id');
         if (!id) return;
         if (!confirm('Är du säker på att du vill ta bort denna print?')) return;
@@ -380,7 +445,7 @@
           renumberTable('activeTable');
           renumberTable('doneTable');
           if (tbody && !tbody.querySelector('tr[data-id]')) {
-            const msg = userRole === 'admin' ? 'Inga prints här.' : `Inga prints från ${otherPerson} här.`;
+            const msg = (userRole === 'admin' || userRole === 'master') ? 'Inga prints här.' : `Inga prints från ${otherPerson} här.`;
             tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:20px">${msg}</td></tr>`;
           }
         } catch (err) {

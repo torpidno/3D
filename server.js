@@ -15,6 +15,8 @@ const NOAH_USER = process.env.NOAH_USER || 'noah';
 const NOAH_PASSWORD = process.env.NOAH_PASSWORD || 'noah123';
 const ALEX_USER = process.env.ALEX_USER || 'alex';
 const ALEX_PASSWORD = process.env.ALEX_PASSWORD || 'alex123';
+const MASTER_USER = process.env.MASTER_USER || 'Master';
+const MASTER_PASSWORD = process.env.MASTER_PASSWORD || '120324';
 const SESSION_SECRET = process.env.SESSION_SECRET || 'change_me_session_secret';
 const DATA_DIR = path.join(__dirname, 'data');
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
@@ -29,6 +31,7 @@ if (!fs.existsSync(DB_FILE)) fs.writeFileSync(DB_FILE, '[]', 'utf8');
 // Initialize users file with default credentials if it doesn't exist
 if (!fs.existsSync(USERS_FILE)) {
   const defaultUsers = [
+    { username: MASTER_USER, password: MASTER_PASSWORD, role: 'master', displayName: 'Master' },
     { username: ADMIN_USER, password: ADMIN_PASSWORD, role: 'admin', displayName: 'Admin' },
     { username: NOAH_USER, password: NOAH_PASSWORD, role: 'noah', displayName: 'Noah' },
     { username: ALEX_USER, password: ALEX_PASSWORD, role: 'alex', displayName: 'Alex' }
@@ -305,6 +308,20 @@ app.get('/logout', (req, res) => {
   });
 });
 
+// Public API: Get list of users for the home page preferens dropdown
+app.get('/api/users', (req, res) => {
+  const users = readUsers();
+  // Return only username and displayName, exclude passwords, admin and master roles
+  const publicUsers = users
+    .filter(u => u.role !== 'admin' && u.role !== 'master') // Don't show admin or master in public dropdown
+    .map(u => ({ 
+      username: u.username, 
+      displayName: u.displayName,
+      role: u.role 
+    }));
+  res.json(publicUsers);
+});
+
 app.post('/api/submit', upload.single('fil'), (req, res) => {
   const { namn, mejl, beskrivning, preferens, brattom } = req.body || {};
   const trimmed = {
@@ -434,12 +451,154 @@ app.get('/admin/completed', sessionAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin-completed.html'));
 });
 
+// User management page (master only)
+app.get('/admin/users', sessionAuth, (req, res) => {
+  if (req.session.user !== 'master') {
+    return res.redirect('/admin');
+  }
+  res.sendFile(path.join(__dirname, 'public', 'admin-users.html'));
+});
+
+// API: Get all users (master only)
+app.get('/api/admin/users', sessionAuth, (req, res) => {
+  if (req.session.user !== 'master') {
+    return res.status(403).json({ ok: false, message: 'Only master can access user management' });
+  }
+  const users = readUsers();
+  // Don't send passwords to frontend
+  const safeUsers = users.map(u => ({ username: u.username, displayName: u.displayName, role: u.role }));
+  res.json(safeUsers);
+});
+
+// API: Create new user (master only)
+app.post('/api/admin/users', sessionAuth, (req, res) => {
+  if (req.session.user !== 'master') {
+    return res.status(403).json({ ok: false, message: 'Only master can create users' });
+  }
+
+  const { username, password, displayName } = req.body;
+
+  if (!username || !password || !displayName) {
+    return res.status(400).json({ ok: false, message: 'Användarnamn, lösenord och visningsnamn krävs' });
+  }
+
+  const users = readUsers();
+  
+  // Check if username already exists
+  if (users.some(u => u.username === username)) {
+    return res.status(400).json({ ok: false, message: 'Användarnamnet finns redan' });
+  }
+
+  // Auto-generate role from username (lowercase)
+  const role = username.trim().toLowerCase();
+
+  // Don't allow creating another master
+  if (role === 'master') {
+    return res.status(400).json({ ok: false, message: 'Kan inte skapa fler Master-konton' });
+  }
+
+  const newUser = {
+    username: username.trim(),
+    password: password,
+    displayName: displayName.trim(),
+    role: role
+  };
+
+  users.push(newUser);
+  writeUsers(users);
+
+  res.json({ ok: true, message: 'Användare skapad' });
+});
+
+// API: Update user (master only)
+app.put('/api/admin/users/:username', sessionAuth, (req, res) => {
+  if (req.session.user !== 'master') {
+    return res.status(403).json({ ok: false, message: 'Only master can update users' });
+  }
+
+  const oldUsername = req.params.username;
+  const { username, password, displayName } = req.body;
+
+  if (!username || !displayName) {
+    return res.status(400).json({ ok: false, message: 'Användarnamn och visningsnamn krävs' });
+  }
+
+  const users = readUsers();
+  const userIndex = users.findIndex(u => u.username === oldUsername);
+
+  if (userIndex === -1) {
+    return res.status(404).json({ ok: false, message: 'Användare hittades inte' });
+  }
+
+  // Don't allow editing master
+  if (users[userIndex].role === 'master') {
+    return res.status(403).json({ ok: false, message: 'Master-kontot kan inte redigeras' });
+  }
+
+  // Auto-generate new role from username (lowercase)
+  const newRole = username.trim().toLowerCase();
+
+  // Don't allow changing to master role
+  if (newRole === 'master') {
+    return res.status(400).json({ ok: false, message: 'Kan inte ändra användarnamn till "master"' });
+  }
+
+  // Check if new username already exists (if changing username)
+  if (username !== oldUsername && users.some(u => u.username === username)) {
+    return res.status(400).json({ ok: false, message: 'Användarnamnet finns redan' });
+  }
+
+  // Update user
+  users[userIndex].username = username.trim();
+  users[userIndex].displayName = displayName.trim();
+  users[userIndex].role = newRole;
+  
+  if (password) {
+    users[userIndex].password = password;
+  }
+
+  writeUsers(users);
+
+  res.json({ ok: true, message: 'Användare uppdaterad' });
+});
+
+// API: Delete user (master only)
+app.delete('/api/admin/users/:username', sessionAuth, (req, res) => {
+  if (req.session.user !== 'master') {
+    return res.status(403).json({ ok: false, message: 'Only master can delete users' });
+  }
+
+  const username = req.params.username;
+  const users = readUsers();
+  const userIndex = users.findIndex(u => u.username === username);
+
+  if (userIndex === -1) {
+    return res.status(404).json({ ok: false, message: 'Användare hittades inte' });
+  }
+
+  // Don't allow deleting master
+  if (users[userIndex].role === 'master') {
+    return res.status(403).json({ ok: false, message: 'Master-kontot kan inte tas bort' });
+  }
+
+  users.splice(userIndex, 1);
+  writeUsers(users);
+
+  res.json({ ok: true, message: 'Användare borttagen' });
+});
+
 app.patch('/api/admin/submissions/:id/claim', sessionAuth, (req, res) => {
   const id = req.params.id;
   const userRole = req.session.user;
-  if (userRole !== 'noah' && userRole !== 'alex') {
-    return res.status(403).json({ ok: false, error: 'Endast Noah eller Alex kan ta över' });
+  const username = req.session.username;
+  
+  // Master can always claim, others can claim if not admin role
+  if (userRole === 'master' || userRole !== 'admin') {
+    // Allow claim
+  } else {
+    return res.status(403).json({ ok: false, error: 'Du kan inte ta över prints' });
   }
+  
   const db = readDb();
   const idx = db.findIndex(s => s.id === id);
   if (idx === -1) return res.status(404).json({ ok: false, error: 'not found' });
@@ -447,7 +606,10 @@ app.patch('/api/admin/submissions/:id/claim', sessionAuth, (req, res) => {
     return res.status(400).json({ ok: false, error: 'Kan bara ta över "Vem som" prints' });
   }
   if (!db[idx].originalPreferens) db[idx].originalPreferens = 'Vem som';
-  db[idx].preferens = userRole === 'noah' ? 'Noah' : 'Alex';
+  
+  // Set preferens to username (capitalized)
+  db[idx].preferens = username.charAt(0).toUpperCase() + username.slice(1);
+  
   writeDb(db);
   res.json({ ok: true });
 });
@@ -455,15 +617,25 @@ app.patch('/api/admin/submissions/:id/claim', sessionAuth, (req, res) => {
 app.patch('/api/admin/submissions/:id/unclaim', sessionAuth, (req, res) => {
   const id = req.params.id;
   const userRole = req.session.user;
-  if (userRole !== 'noah' && userRole !== 'alex') {
-    return res.status(403).json({ ok: false, error: 'Endast Noah eller Alex kan ångra' });
+  const username = req.session.username;
+  
+  // Master can always unclaim, others can unclaim if not admin role
+  if (userRole === 'master' || userRole !== 'admin') {
+    // Allow unclaim
+  } else {
+    return res.status(403).json({ ok: false, error: 'Du kan inte ångra' });
   }
+  
   const db = readDb();
   const idx = db.findIndex(s => s.id === id);
   if (idx === -1) return res.status(404).json({ ok: false, error: 'not found' });
-  if ((db[idx].preferens !== 'Noah' && db[idx].preferens !== 'Alex') || db[idx].originalPreferens !== 'Vem som') {
-    return res.status(400).json({ ok: false, error: 'Kan bara ångra "Vem som"-claimade prints' });
+  
+  // Check if this user's print and was originally "Vem som"
+  const capitalizedUsername = username.charAt(0).toUpperCase() + username.slice(1);
+  if (db[idx].preferens !== capitalizedUsername || db[idx].originalPreferens !== 'Vem som') {
+    return res.status(400).json({ ok: false, error: 'Kan bara ångra dina egna "Vem som"-claimade prints' });
   }
+  
   db[idx].preferens = 'Vem som';
   writeDb(db);
   res.json({ ok: true });
